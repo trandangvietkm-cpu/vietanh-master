@@ -49,10 +49,9 @@ header .bg-amber-50 {
   box-sizing: border-box !important;
 }
 
-/* 3 nút giữa (Phát âm, Xem đáp án, Làm lại): Chỉ hiện Icon trên điện thoại */
+/* 2 nút phụ giữa (Xem đáp án, Làm lại): Chỉ hiện Icon tròn trên điện thoại (không đè vào #submit-btn ở vị trí thứ 4) */
 #floating-action-dock > button:nth-child(2),
-#floating-action-dock > button:nth-child(3),
-#floating-action-dock > button:nth-child(4) {
+#floating-action-dock > button:nth-child(3) {
   flex: 0 0 42px !important;
   width: 42px !important;
   height: 40px !important;
@@ -60,16 +59,14 @@ header .bg-amber-50 {
   border-radius: 50% !important;
 }
 
-/* Ẩn chữ của 3 nút phụ trên điện thoại, chỉ giữ lại chữ ở nút Kiểm tra / Tiếp tục */
+/* Ẩn chữ của 2 nút phụ trên điện thoại */
 #floating-action-dock > button:nth-child(2) > span,
-#floating-action-dock > button:nth-child(3) > span,
-#floating-action-dock > button:nth-child(4) > span {
+#floating-action-dock > button:nth-child(3) > span {
   display: none !important;
 }
 
 #floating-action-dock > button:nth-child(2) > i,
-#floating-action-dock > button:nth-child(3) > i,
-#floating-action-dock > button:nth-child(4) > i {
+#floating-action-dock > button:nth-child(3) > i {
   display: inline-block !important;
   font-size: 15px !important;
   margin: 0 !important;

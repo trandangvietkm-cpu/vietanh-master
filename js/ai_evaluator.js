@@ -292,7 +292,7 @@
             "i'm": ["i", "am"], "you're": ["you", "are"], "he's": ["he", "is"], "she's": ["she", "is"],
             "it's": ["it", "is"], "we're": ["we", "are"], "they're": ["they", "are"],
             "i've": ["i", "have"], "you've": ["you", "have"], "we've": ["we", "have"], "they've": ["they", "have"],
-            "i'd": ["i", "would"], "you'd": ["you", "would"], "he'd": ["he", "would"], "she'd": ["she", "would"], "we'd": ["we", "would"],
+            "i'd": ["i", "would"], "you'd": ["you", "would"], "he'd": ["he", "would"], "she'd": ["she", "would"], "we'd": ["we", "would"], "they'd": ["they", "would"], "it'd": ["it", "would"],
             "i'll": ["i", "will"], "you'll": ["you", "will"], "he'll": ["he", "will"], "she'll": ["she", "will"], "it'll": ["it", "will"], "we'll": ["we", "will"], "they'll": ["they", "will"],
             "'ll": ["will"],
             "don't": ["do", "not"], "doesn't": ["does", "not"], "didn't": ["did", "not"],
@@ -300,8 +300,57 @@
             "couldn't": ["could", "not"], "wouldn't": ["would", "not"], "shouldn't": ["should", "not"],
             "isn't": ["is", "not"], "aren't": ["are", "not"], "wasn't": ["was", "not"], "weren't": ["were", "not"],
             "haven't": ["have", "not"], "hasn't": ["has", "not"], "hadn't": ["had", "not"],
-            "that's": ["that", "is"], "there's": ["there", "is"], "let's": ["let", "us"]
+            "that's": ["that", "is"], "there's": ["there", "is"], "let's": ["let", "us"],
+            "what's": ["what", "is"], "where's": ["where", "is"], "who's": ["who", "is"],
+            "here's": ["here", "is"], "how's": ["how", "is"], "when's": ["when", "is"], "why's": ["why", "is"]
         };
+
+        // Nhóm từ đồng nghĩa phổ biến A1–B1 để chấm Offline công bằng hơn
+        const OFFLINE_SYNONYM_GROUPS = [
+            ["hi", "hello", "hey"],
+            ["big", "large", "huge"],
+            ["small", "little", "tiny"],
+            ["nice", "good", "beautiful", "pretty", "lovely", "kind", "friendly", "great"],
+            ["kids", "children"],
+            ["fridge", "refrigerator"],
+            ["restroom", "bathroom", "toilet", "washroom"],
+            ["shop", "store"],
+            ["shops", "stores"],
+            ["cafe", "café"],
+            ["office", "company", "workplace"],
+            ["colleagues", "coworkers"],
+            ["colleague", "coworker"],
+            ["staff", "employees", "workers"],
+            ["trip", "holiday", "vacation"],
+            ["near", "nearby", "close"],
+            ["very", "really", "quite", "so"],
+            ["job", "occupation", "work"],
+            ["chef", "cook"],
+            ["best", "close"],
+            ["tv", "television"],
+            ["phone", "cellphone", "mobile"],
+            ["wifi", "wi-fi"],
+            ["email", "e-mail"],
+            ["start", "begin"],
+            ["finish", "complete"],
+            ["buy", "purchase"],
+            ["fast", "quick"],
+            ["smart", "intelligent", "clever"]
+        ];
+
+        const OFFLINE_SYNONYM_MAP = {};
+        OFFLINE_SYNONYM_GROUPS.forEach(group => {
+            group.forEach(w => {
+                if (!OFFLINE_SYNONYM_MAP[w]) OFFLINE_SYNONYM_MAP[w] = new Set();
+                group.forEach(other => OFFLINE_SYNONYM_MAP[w].add(other));
+            });
+        });
+
+        function areWordsSynonyms(w1, w2) {
+            if (!w1 || !w2) return false;
+            if (w1 === w2) return true;
+            return Boolean(OFFLINE_SYNONYM_MAP[w1] && OFFLINE_SYNONYM_MAP[w1].has(w2));
+        }
 
         const NUMBER_WORD_EQUIV = {
             "1": "one", "2": "two", "3": "three", "4": "four", "5": "five",
@@ -328,8 +377,12 @@
             const clean = (rawToken || "")
                 .toLowerCase()
                 .replace(/[’‘`]/g, "'")
-                .replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, "");
+                .replace(/^(wi)-(fi)$/i, "wifi")
+                .replace(/^(e)-(mail)$/i, "email")
+                .replace(/^[^a-z0-9'-]+|[^a-z0-9'-]+$/g, "");
             if (!clean) return [];
+            const noHyphen = clean.replace(/-/g, "");
+            if (noHyphen === "wifi" || noHyphen === "email") return [noHyphen];
             if (CONTRACTION_EXPANSION_MAP[clean]) {
                 return CONTRACTION_EXPANSION_MAP[clean];
             }
@@ -395,7 +448,7 @@
             const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
             for (let i = 1; i <= m; i++) {
                 for (let j = 1; j <= n; j++) {
-                    if (uAtoms[i - 1].norm === rAtoms[j - 1].norm) {
+                    if (areWordsSynonyms(uAtoms[i - 1].norm, rAtoms[j - 1].norm)) {
                         dp[i][j] = dp[i - 1][j - 1] + 1;
                     } else {
                         dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
@@ -407,7 +460,7 @@
             const matchedRefAtomIdx = new Set();
             let i = m, j = n;
             while (i > 0 && j > 0) {
-                if (uAtoms[i - 1].norm === rAtoms[j - 1].norm) {
+                if (areWordsSynonyms(uAtoms[i - 1].norm, rAtoms[j - 1].norm)) {
                     matchedUserAtomIdx.add(i - 1);
                     matchedRefAtomIdx.add(j - 1);
                     i--;
@@ -594,13 +647,30 @@
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Các cấu trúc tùy chỉnh khác: kiểm tra khớp NGUYÊN CỤM từ requiredPatterns
+            // Các cấu trúc tùy chỉnh / Chặng 1–8: kiểm tra khớp requiredPatterns (có mở rộng viết tắt) + kiểm tra thể Phủ định / Nghi vấn
             if (Array.isArray(question.structureInfo.requiredPatterns) && question.structureInfo.requiredPatterns.length > 0) {
-                const matchedPat = question.structureInfo.requiredPatterns.some(pat =>
-                    hasExactWholeWordOrPhrase(cleanUser, pat) || hasExactWholeWordOrPhrase(userExpandedText, pat)
-                );
+                const matchedPat = question.structureInfo.requiredPatterns.some(pat => {
+                    const patExpanded = tokenizeToExpandedAtoms(pat).atoms.map(a => a.norm).join(' ');
+                    return hasExactWholeWordOrPhrase(cleanUser, pat)
+                        || hasExactWholeWordOrPhrase(userExpandedText, pat)
+                        || (patExpanded && hasExactWholeWordOrPhrase(userExpandedText, patExpanded));
+                });
                 if (!matchedPat) {
                     return { valid: false, partial: false, reason: `Bạn chưa áp dụng đúng cấu trúc trọng tâm "${question.structureInfo.shortName}".` };
+                }
+            }
+
+            // Kiểm tra bổ sung thể Phủ định (-) cho câu phủ định rõ ràng
+            const isNegPrompt = question.form === 'negative' || /(not|no|never)/i.test(tokenizeToExpandedAtoms(sample).atoms.map(a => a.norm).join(' '));
+            if (isNegPrompt && !/(not|no|never)/i.test(userExpandedText)) {
+                return { valid: false, partial: true, reason: "Câu đề bài mang nghĩa phủ định nhưng câu dịch của bạn chưa có từ phủ định (not / n't / no)." };
+            }
+
+            // Kiểm tra bổ sung đảo ngữ cơ bản cho câu hỏi Yes/No (?)
+            if (isQuestionPrompt && /^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had)/i.test(sample)) {
+                const startsWithQuestionWord = /^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had|what|where|when|who|why|how|which|isn't|aren't|don't|doesn't|didn't)/i.test(cleanUser);
+                if (!startsWithQuestionWord) {
+                    return { valid: false, partial: true, reason: "Đây là câu hỏi — bạn cần đảo trợ động từ / To be (Is, Are, Do, Does...) lên đầu câu." };
                 }
             }
 
@@ -694,8 +764,9 @@
                 const kwExpanded = tokenizeToExpandedAtoms(kwClean).atoms.map(a => a.norm).join(' ');
                 const exactHit = hasExactWholeWordOrPhrase(cleanUser, kwClean)
                     || (kwExpanded && hasExactWholeWordOrPhrase(userExpandedText, kwExpanded));
+                const synHit = !exactHit && !kwClean.includes(' ') && uNormWords.some(uw => areWordsSynonyms(uw, kwExpanded || kwClean));
 
-                if (exactHit) {
+                if (exactHit || synHit) {
                     kwCredit += 1.0;
                     matchedKwExactCount++;
                 } else if (!kwClean.includes(' ') && kwClean.length >= 5) {
@@ -712,7 +783,11 @@
                 }
             });
 
-            const keywordRatio = rawKeywords.length > 0 ? (kwCredit / rawKeywords.length) : bestDiff.ratio;
+            // Nếu học viên khớp rất sát với bản Formal hoặc Alternative (>= 85%), không trừ điểm từ khóa oan theo bản Casual
+            let keywordRatio = rawKeywords.length > 0 ? (kwCredit / rawKeywords.length) : bestDiff.ratio;
+            if (bestDiff.ratio >= 0.85 && keywordRatio < bestDiff.ratio) {
+                keywordRatio = bestDiff.ratio;
+            }
             const keywordScore = Math.round(keywordRatio * 3.5 * 100) / 100;
 
             // 3. THÀNH PHẦN 3: Độ khớp từng từ Word-Diff / LCS (2.5đ ngầm)
@@ -727,21 +802,25 @@
             let rawTotal = structureScore + keywordScore + diffScore + formatScore;
 
             const isExactContentMatch = uniqueRefs.some(ref => {
-                const refExpanded = tokenizeToExpandedAtoms(ref).atoms.map(a => a.norm).join(' ');
-                return refExpanded.length > 0 && refExpanded === userExpandedText;
+                const refAtoms = tokenizeToExpandedAtoms(ref).atoms;
+                if (refAtoms.length === 0 || refAtoms.length !== userExpandedAtoms.length) return false;
+                return refAtoms.every((ra, idx) => areWordsSynonyms(ra.norm, userExpandedAtoms[idx].norm));
             });
+
+            const refAtomCount = tokenizeToExpandedAtoms(bestDiff.refText).atoms.length;
+            const minPassRatio = refAtomCount <= 5 ? 0.48 : 0.55;
 
             if (isExactContentMatch) {
                 rawTotal = 9.0 + formatCheck.formatScore;
             } else if (!hasRealContent) {
                 rawTotal = Math.min(rawTotal, 2.0);
             } else {
-                // Chặn trần 1: Sai cấu trúc mục tiêu hoặc sai ngữ pháp câu hỏi -> Chưa đạt (<= 6.0)
+                // Chặn trần 1: Sai cấu trúc mục tiêu hoặc sai ngữ pháp câu hỏi/phủ định -> Chưa đạt (<= 6.0)
                 if (!usedTargetStructure) {
                     rawTotal = Math.min(rawTotal, 6.0);
                 }
-                // Chặn trần 2: Khớp từ quá thấp (< 55%) -> Chưa đạt (<= 6.0)
-                if (bestDiff.ratio < 0.55) {
+                // Chặn trần 2: Khớp từ quá thấp (nới nhẹ cho câu A1 ngắn <= 5 từ) -> Chưa đạt (<= 6.0)
+                if (bestDiff.ratio < minPassRatio) {
                     rawTotal = Math.min(rawTotal, 6.0);
                 }
                 // Chặn trần 3: Khớp từ ở mức khá (< 72%) hoặc còn sai từ/sai chính tả -> Không thể đạt "Chuẩn xác" (>= 9.0)

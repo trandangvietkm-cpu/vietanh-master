@@ -2137,6 +2137,7 @@ function jumpToReviewBoxQuestionByIndex(idx) {
     }
 
     const candidateIds = [
+        targetItem.situationId,
         targetItem.id,
         targetItem.questionId,
         targetItem.sitId,
@@ -2253,7 +2254,8 @@ function renderReviewBoxModal() {
         bodyHtml = `
             <div class="space-y-2.5 max-h-[55vh] overflow-y-auto pr-0.5">
                 ${reviewBox.map((item, idx) => {
-                    const dueTs = item.nextReview || item.dueDate || item.reviewAt || 0;
+                    const rawDue = item.nextReviewDue || item.nextReview || item.dueDate || item.reviewAt || 0;
+                    const dueTs = rawDue ? new Date(rawDue).getTime() : 0;
                     const isDue = !dueTs || dueTs <= now;
                     const dateStr = dueTs
                         ? new Date(dueTs).toLocaleDateString('vi-VN')

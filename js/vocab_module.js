@@ -1226,15 +1226,26 @@
         if (viewNotebook) viewNotebook.classList.add('hidden');
 
         if (tab === 'home') {
+            document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
             if (viewHome) viewHome.classList.remove('hidden');
             if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
         } else if (tab === 'notebook') {
+            document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
             if (viewNotebook) viewNotebook.classList.remove('hidden');
             injectVocabSubTabsIntoNotebook();
             const targetSub = getVocabBank().length > 0 ? 'vocab' : currentNotebookSubTab;
             switchNotebookSubTab(targetSub);
         } else {
             if (viewPractice) viewPractice.classList.remove('hidden');
+            if (typeof state !== 'undefined' && state.practiceMode === 'structure' && state.selectedStructureId) {
+                document.body.classList.add('va-in-workspace');
+                document.body.classList.remove('va-in-topic-practice');
+            } else if (typeof state !== 'undefined' && state.practiceMode === 'topic') {
+                document.body.classList.remove('va-in-workspace');
+                document.body.classList.add('va-in-topic-practice');
+            } else {
+                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
+            }
         }
     };
 

@@ -159,60 +159,7 @@
         }
     }
 
-    // 3. Hiển thị danh sách các câu cần ôn tập nhanh
-    function renderReviewBoxModal() {
-        let modal = document.getElementById('review-box-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'review-box-modal';
-            modal.className = 'hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4';
-            document.body.appendChild(modal);
-        }
-
-        const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-
-        if (reviewBox.length === 0) {
-            modal.innerHTML = `
-                <div class="bg-white rounded-3xl max-w-lg w-full p-6 text-center space-y-4 shadow-2xl">
-                    <div class="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto text-2xl">
-                        <i class="fa-solid fa-circle-check"></i>
-                    </div>
-                    <h3 class="font-extrabold text-lg text-slate-900">Hộp ôn tập đang trống!</h3>
-                    <p class="text-xs text-slate-500">Tuyệt vời! Các câu trả lời ở trạng thái Chưa đạt sẽ được hệ thống tự động lưu vào đây để bạn rèn luyện lại sau mỗi 3 ngày.</p>
-                    <button onclick="document.getElementById('review-box-modal').remove()" class="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold">Đóng</button>
-                </div>`;
-        } else {
-            let itemsHtml = reviewBox.map((item, idx) => `
-                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs">
-                    <div class="min-w-0">
-                        <span class="px-2 py-0.5 rounded-md bg-rose-50 text-rose-600 border border-rose-200/70 font-bold">Chưa đạt • Cần ôn lại</span>
-                        <p class="font-bold text-slate-900 mt-1 truncate">${item.vi ? `"${item.vi}"` : `Cấu trúc: ${item.structId} - Câu #${item.situationId}`}</p>
-                        <p class="text-slate-500 italic text-[11px]">Hẹn ôn lại: ${new Date(item.nextReviewDue).toLocaleDateString('vi-VN')}</p>
-                    </div>
-                    <button onclick="startQuickReview('${item.structId}', '${item.situationId}')" class="px-3 py-1.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shrink-0">
-                        Ôn ngay
-                    </button>
-                </div>
-            `).join('');
-
-            modal.innerHTML = `
-                <div class="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[80vh] flex flex-col">
-                    <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                        <h3 class="font-extrabold text-base text-slate-900 flex items-center gap-2">
-                            <i class="fa-solid fa-brain text-indigo-600"></i> Hộp Ôn Tập Thông Minh (Spaced Repetition)
-                        </h3>
-                        <button onclick="document.getElementById('review-box-modal').remove()" class="text-slate-400 hover:text-slate-600">
-                            <i class="fa-solid fa-xmark text-lg"></i>
-                        </button>
-                    </div>
-                    <p class="text-xs text-slate-500">Hệ thống tự động nhắc lại các câu bạn từng làm chưa tốt sau mỗi chu kỳ 3 ngày.</p>
-                    <div class="space-y-2.5 overflow-y-auto flex-1 pr-1">
-                        ${itemsHtml}
-                    </div>
-                </div>`;
-        }
-        modal.classList.remove('hidden');
-    }
+    // 3. Giao diện Modal Hộp ôn tập (renderReviewBoxModal) được quản lý tập trung tại js/app_controller.js
 
    // 4. Chế độ luyện tập nhanh một câu cụ thể từ Hộp ôn tập
     function startQuickReview(structId, situationId) {
