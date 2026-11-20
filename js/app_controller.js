@@ -2088,5 +2088,173 @@
       toggleAuthorModal(false);
       closeStructFilterModal();
       closeTopicFilterModal();
+      closeReviewBoxModal();
     }
   });
+
+
+// ==================== FIX HỘP ÔN TẬP THÔNG MINH (SPACED REPETITION) ====================
+function closeReviewBoxModal() {
+    const existing = document.getElementById('va-review-box-modal');
+    if (existing) existing.remove();
+}
+
+function removeFromReviewBoxById(itemId) {
+    const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+    const updated = reviewBox.filter(item => String(item.id) !== String(itemId));
+    localStorage.setItem('va_review_box', JSON.stringify(updated));
+    if (typeof updateReviewBadgeCount === 'function') updateReviewBadgeCount();
+    renderReviewBoxModal();
+}
+
+function jumpToReviewBoxQuestion(itemId) {
+    const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+    const targetItem = reviewBox.find(r => String(r.id) === String(itemId));
+
+    // 1. Tìm trong SENTENCE_STRUCTURES theo id (hoặc đối chiếu câu tiếng Việt nếu id đổi)
+    let foundStructId = null;
+    let foundSitIdx = -1;
+
+    for (const struct of (SENTENCE_STRUCTURES || [])) {
+        const idx = (struct.situations || []).findIndex(s =>
+            String(s.id) === String(itemId) ||
+            (targetItem && targetItem.vi && s.vi && s.vi.trim() === targetItem.vi.trim())
+        );
+        if (idx !== -1) {
+            foundStructId = struct.id;
+            foundSitIdx = idx;
+            break;
+        }
+    }
+
+    closeReviewBoxModal();
+
+    if (foundStructId && foundSitIdx !== -1) {
+        // Bỏ bộ lọc đang kẹt (nếu có) để luôn mở đúng câu ôn tập
+        switchTab('practice');
+        state.practiceMode = 'structure';
+        const structBtn = document.getElementById('mode-structure-btn');
+        const topicBtn = document.getElementById('mode-topic-btn');
+        const structContainer = document.getElementById('structure-mode-container');
+        const topicContainer = document.getElementById('topic-mode-container');
+        if (structBtn) structBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all";
+        if (topicBtn) topicBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all";
+        if (structContainer) structContainer.classList.remove('hidden');
+        if (topicContainer) topicContainer.classList.add('hidden');
+        document.body.classList.remove('va-in-topic-practice');
+
+        openStructureWorkspace(foundStructId);
+        selectSituation(foundSitIdx);
+        showToast("Đã mở thẳng câu cần ôn tập!", "success");
+        return;
+    }
+
+    // 2. Dự phòng: Tìm trong EXERCISE_BANK (Chủ đề tự do)
+    const bankIdx = (EXERCISE_BANK || []).findIndex(q =>
+        String(q.id) === String(itemId) ||
+        (targetItem && targetItem.vi && q.vi && q.vi.trim() === targetItem.vi.trim())
+    );
+    if (bankIdx !== -1) {
+        switchTab('practice');
+        switchPracticeMode('topic');
+        const matchedQ = EXERCISE_BANK[bankIdx];
+        const fIdx = (state.filteredList || []).findIndex(q => String(q.id) === String(matchedQ.id));
+        if (fIdx !== -1) {
+            state.currentIndex = fIdx;
+        } else {
+            state.filteredList = [matchedQ, ...(state.filteredList || [])];
+            state.currentIndex = 0;
+        }
+        renderCurrentQuestion();
+        showToast("Đã mở thẳng câu cần ôn tập!", "success");
+        return;
+    }
+
+    showToast("Câu này không còn trong kho dữ liệu hiện tại.", "warning");
+}
+
+function renderReviewBoxModal() {
+    closeReviewBoxModal();
+
+    const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const now = Date.now();
+
+    let bodyHtml = '';
+    if (reviewBox.length === 0) {
+        bodyHtml = `
+            <div class="py-8 px-4 text-center space-y-3">
+                <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <h4 class="font-extrabold text-slate-800 text-base">Hộp ôn tập đang trống!</h4>
+                <p class="text-xs sm:text-sm text-slate-500 leading-relaxed max-w-xs mx-auto">
+                    Tuyệt vời! Hiện tại bạn không có câu nào bị làm sai hoặc đến hạn ôn tập định kỳ.
+                </p>
+            </div>
+        `;
+    } else {
+        bodyHtml = `
+            <div class="space-y-2.5 max-h-[55vh] overflow-y-auto pr-0.5">
+                ${reviewBox.map(item => {
+                    const isDue = !item.nextReview || item.nextReview <= now;
+                    const dateStr = item.nextReview
+                        ? new Date(item.nextReview).toLocaleDateString('vi-VN')
+                        : 'Hôm nay';
+                    const safeId = String(item.id || '').replace(/'/g, "\\'");
+                    return `
+                        <div class="p-3.5 rounded-2xl border ${isDue ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200 bg-slate-50/60'} flex items-center justify-between gap-3">
+                            <div class="min-w-0 flex-1 space-y-1">
+                                <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-extrabold ${isDue ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}">
+                                    ${isDue ? 'Đến hạn ôn tập' : 'Chưa đạt • Cần ôn lại'}
+                                </span>
+                                <p class="text-xs sm:text-sm font-bold text-slate-900 truncate">"${esc(item.vi || 'Tình huống ôn tập')}"</p>
+                                <p class="text-[11px] text-slate-500 italic">Hẹn ôn lại: ${dateStr}</p>
+                            </div>
+                            <div class="flex items-center gap-1.5 shrink-0">
+                                <button type="button" onclick="jumpToReviewBoxQuestion('${safeId}')" class="px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all">
+                                    Ôn ngay
+                                </button>
+                                <button type="button" onclick="removeFromReviewBoxById('${safeId}')" class="w-8 h-8 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 flex items-center justify-center transition-all" title="Xóa khỏi hộp ôn tập">
+                                    <i class="fa-regular fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'va-review-box-modal';
+    modal.className = 'fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4';
+    modal.setAttribute('onclick', 'if(event.target === this) closeReviewBoxModal()');
+    modal.innerHTML = `
+        <div class="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-base shrink-0">
+                        <i class="fa-solid fa-brain"></i>
+                    </div>
+                    <h3 class="font-extrabold text-sm sm:text-base text-slate-900 leading-snug">Hộp Ôn Tập Thông Minh (Spaced Repetition)</h3>
+                </div>
+                <button type="button" onclick="closeReviewBoxModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center shrink-0 transition-all" title="Đóng (Esc)">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="p-5 space-y-3">
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Hệ thống tự động nhắc lại các câu bạn từng làm chưa tốt sau mỗi chu kỳ 3 ngày.
+                </p>
+                ${bodyHtml}
+            </div>
+            <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button type="button" onclick="closeReviewBoxModal()" class="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-all">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
