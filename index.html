@@ -1381,5 +1381,22 @@
     <script src="./js/app_controller.js"></script>
     <script src="./js/vocab_module.js"></script>
     <script src="./js/gemini_assistant.js"></script>
+
+<!-- ==================== An huy hieu netlify ==================== -->
+<script>
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      document.querySelectorAll('netlify-badge, [data-netlify-badge], a[href*="netlify.com"]').forEach(el => {
+        el.style.display = 'none';
+      });
+      document.querySelectorAll('body > *').forEach(el => {
+        if (el.shadowRoot && el.shadowRoot.innerHTML.includes('Netlify')) {
+          el.style.display = 'none';
+        }
+      });
+    }, 500);
+  });
+</script>
+
 </body>
 </html>
