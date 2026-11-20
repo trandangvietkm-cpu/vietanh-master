@@ -2099,30 +2099,74 @@ function closeReviewBoxModal() {
     if (existing) existing.remove();
 }
 
-function removeFromReviewBoxById(itemId) {
+function getReviewItemViText(item) {
+    if (!item || typeof item !== 'object') return '';
+    return String(item.vi || item.vietnamese || item.questionVi || item.question || item.text || '').trim();
+}
+
+function normalizeReviewCompareText(str) {
+    return String(str || '')
+        .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function removeFromReviewBoxByIndex(idx) {
     const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-    const updated = reviewBox.filter(item => String(item.id) !== String(itemId));
-    localStorage.setItem('va_review_box', JSON.stringify(updated));
-    if (typeof updateReviewBadgeCount === 'function') updateReviewBadgeCount();
+    if (idx >= 0 && idx < reviewBox.length) {
+        reviewBox.splice(idx, 1);
+        localStorage.setItem('va_review_box', JSON.stringify(reviewBox));
+        if (typeof updateReviewBadgeCount === 'function') updateReviewBadgeCount();
+        if (typeof renderHomeDashboard === 'function') {
+            const viewHome = document.getElementById('view-home');
+            if (viewHome && !viewHome.classList.contains('hidden')) renderHomeDashboard();
+        }
+        showToast("Đã xóa câu khỏi Hộp ôn tập!", "info");
+    }
     renderReviewBoxModal();
 }
 
-function jumpToReviewBoxQuestion(itemId) {
+function jumpToReviewBoxQuestionByIndex(idx) {
     const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-    const targetItem = reviewBox.find(r => String(r.id) === String(itemId));
+    const targetItem = reviewBox[idx];
+    if (!targetItem) {
+        closeReviewBoxModal();
+        showToast("Không tìm thấy mục ôn tập này.", "warning");
+        return;
+    }
 
-    // 1. Tìm trong SENTENCE_STRUCTURES theo id (hoặc đối chiếu câu tiếng Việt nếu id đổi)
+    const candidateIds = [
+        targetItem.id,
+        targetItem.questionId,
+        targetItem.sitId,
+        targetItem.qId
+    ].filter(v => v !== undefined && v !== null && String(v).trim() !== '').map(v => String(v).trim());
+
+    const targetViNorm = normalizeReviewCompareText(getReviewItemViText(targetItem));
+    const targetEnNorm = normalizeReviewCompareText(targetItem.en || targetItem.sampleCasual || targetItem.answer || '');
+
+    // 1. Tìm chính xác trong SENTENCE_STRUCTURES (ưu tiên khớp ID, sau đó khớp câu tiếng Việt hoặc đáp án tiếng Anh)
     let foundStructId = null;
     let foundSitIdx = -1;
 
     for (const struct of (SENTENCE_STRUCTURES || [])) {
-        const idx = (struct.situations || []).findIndex(s =>
-            String(s.id) === String(itemId) ||
-            (targetItem && targetItem.vi && s.vi && s.vi.trim() === targetItem.vi.trim())
-        );
-        if (idx !== -1) {
+        const sits = struct.situations || [];
+        let sitIdx = -1;
+
+        if (candidateIds.length > 0) {
+            sitIdx = sits.findIndex(s => s && s.id !== undefined && candidateIds.includes(String(s.id).trim()));
+        }
+        if (sitIdx === -1 && targetViNorm) {
+            sitIdx = sits.findIndex(s => s && normalizeReviewCompareText(s.vi) === targetViNorm);
+        }
+        if (sitIdx === -1 && targetEnNorm) {
+            sitIdx = sits.findIndex(s => s && normalizeReviewCompareText(s.sampleCasual) === targetEnNorm);
+        }
+
+        if (sitIdx !== -1) {
             foundStructId = struct.id;
-            foundSitIdx = idx;
+            foundSitIdx = sitIdx;
             break;
         }
     }
@@ -2130,17 +2174,21 @@ function jumpToReviewBoxQuestion(itemId) {
     closeReviewBoxModal();
 
     if (foundStructId && foundSitIdx !== -1) {
-        // Bỏ bộ lọc đang kẹt (nếu có) để luôn mở đúng câu ôn tập
+        // Mở thẳng tab Luyện tập -> chế độ Cấu trúc -> đúng Trạm & đúng Câu (không qua bước chọn lọc)
         switchTab('practice');
         state.practiceMode = 'structure';
+        state.activeCheckpointStageId = null;
+
         const structBtn = document.getElementById('mode-structure-btn');
         const topicBtn = document.getElementById('mode-topic-btn');
         const structContainer = document.getElementById('structure-mode-container');
         const topicContainer = document.getElementById('topic-mode-container');
+        const topicEmptyEl = document.getElementById('topic-empty-state');
         if (structBtn) structBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all";
         if (topicBtn) topicBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all";
         if (structContainer) structContainer.classList.remove('hidden');
         if (topicContainer) topicContainer.classList.add('hidden');
+        if (topicEmptyEl) topicEmptyEl.classList.add('hidden');
         document.body.classList.remove('va-in-topic-practice');
 
         openStructureWorkspace(foundStructId);
@@ -2150,15 +2198,23 @@ function jumpToReviewBoxQuestion(itemId) {
     }
 
     // 2. Dự phòng: Tìm trong EXERCISE_BANK (Chủ đề tự do)
-    const bankIdx = (EXERCISE_BANK || []).findIndex(q =>
-        String(q.id) === String(itemId) ||
-        (targetItem && targetItem.vi && q.vi && q.vi.trim() === targetItem.vi.trim())
-    );
+    const bank = EXERCISE_BANK || [];
+    let bankIdx = -1;
+    if (candidateIds.length > 0) {
+        bankIdx = bank.findIndex(q => q && q.id !== undefined && candidateIds.includes(String(q.id).trim()));
+    }
+    if (bankIdx === -1 && targetViNorm) {
+        bankIdx = bank.findIndex(q => q && normalizeReviewCompareText(q.vi) === targetViNorm);
+    }
+    if (bankIdx === -1 && targetEnNorm) {
+        bankIdx = bank.findIndex(q => q && normalizeReviewCompareText(q.sampleCasual) === targetEnNorm);
+    }
+
     if (bankIdx !== -1) {
         switchTab('practice');
         switchPracticeMode('topic');
-        const matchedQ = EXERCISE_BANK[bankIdx];
-        const fIdx = (state.filteredList || []).findIndex(q => String(q.id) === String(matchedQ.id));
+        const matchedQ = bank[bankIdx];
+        const fIdx = (state.filteredList || []).findIndex(q => q && String(q.id) === String(matchedQ.id));
         if (fIdx !== -1) {
             state.currentIndex = fIdx;
         } else {
@@ -2196,26 +2252,27 @@ function renderReviewBoxModal() {
     } else {
         bodyHtml = `
             <div class="space-y-2.5 max-h-[55vh] overflow-y-auto pr-0.5">
-                ${reviewBox.map(item => {
-                    const isDue = !item.nextReview || item.nextReview <= now;
-                    const dateStr = item.nextReview
-                        ? new Date(item.nextReview).toLocaleDateString('vi-VN')
+                ${reviewBox.map((item, idx) => {
+                    const dueTs = item.nextReview || item.dueDate || item.reviewAt || 0;
+                    const isDue = !dueTs || dueTs <= now;
+                    const dateStr = dueTs
+                        ? new Date(dueTs).toLocaleDateString('vi-VN')
                         : 'Hôm nay';
-                    const safeId = String(item.id || '').replace(/'/g, "\\'");
+                    const viText = getReviewItemViText(item) || 'Tình huống ôn tập';
                     return `
                         <div class="p-3.5 rounded-2xl border ${isDue ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200 bg-slate-50/60'} flex items-center justify-between gap-3">
                             <div class="min-w-0 flex-1 space-y-1">
                                 <span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-extrabold ${isDue ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800'}">
                                     ${isDue ? 'Đến hạn ôn tập' : 'Chưa đạt • Cần ôn lại'}
                                 </span>
-                                <p class="text-xs sm:text-sm font-bold text-slate-900 truncate">"${esc(item.vi || 'Tình huống ôn tập')}"</p>
+                                <p class="text-xs sm:text-sm font-bold text-slate-900 truncate">"${esc(viText)}"</p>
                                 <p class="text-[11px] text-slate-500 italic">Hẹn ôn lại: ${dateStr}</p>
                             </div>
                             <div class="flex items-center gap-1.5 shrink-0">
-                                <button type="button" onclick="jumpToReviewBoxQuestion('${safeId}')" class="px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all">
+                                <button type="button" onclick="jumpToReviewBoxQuestionByIndex(${idx})" class="px-3.5 py-2 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all">
                                     Ôn ngay
                                 </button>
-                                <button type="button" onclick="removeFromReviewBoxById('${safeId}')" class="w-8 h-8 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 flex items-center justify-center transition-all" title="Xóa khỏi hộp ôn tập">
+                                <button type="button" onclick="removeFromReviewBoxByIndex(${idx})" class="w-8 h-8 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 flex items-center justify-center transition-all" title="Xóa khỏi hộp ôn tập">
                                     <i class="fa-regular fa-trash-can text-xs"></i>
                                 </button>
                             </div>
