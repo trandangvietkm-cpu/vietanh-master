@@ -2417,7 +2417,8 @@ const audioDrillState = {
     isPlaying: false,
     phase: 'idle',         // 'idle' | 'thinking' | 'speaking' | 'shadowing' | 'pause' | 'done'
     speed: 0.85,           // 0.75 | 0.85 | 1.0
-    waitSec: 5,            // 3 | 5 | 7
+    waitSec: 5,            // 0 | 3 | 5 | 7
+    continuousLoop: false, // true = phát lặp liên tục cả Trạm không dừng
     hideEnglish: false,
     revealedManually: false,
     remainingMs: 0,
@@ -2537,9 +2538,12 @@ function openAudioDrillModal(structId = null) {
                     </div>
                 </div>
 
-                <!-- Thanh điều khiển chính: Trước | Phát/Tạm dừng | Tiếp -->
+                <!-- Thanh điều khiển chính: Phát liên tục | Trước | Phát/Tạm dừng | Tiếp | Nghe lại -->
                 <div class="pt-1 space-y-3">
-                    <div class="flex items-center justify-center gap-6">
+                    <div class="flex items-center justify-center gap-4 sm:gap-5">
+                        <button id="ad-loop-btn" type="button" onclick="toggleAudioDrillLoop()" class="w-10 h-10 rounded-full bg-white hover:bg-indigo-50 text-slate-500 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Bật / Tắt phát liên tục (Lặp lại cả Trạm)">
+                            <i class="fa-solid fa-repeat text-xs"></i>
+                        </button>
                         <button type="button" onclick="stepAudioDrill(-1)" class="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Câu trước">
                             <i class="fa-solid fa-backward-step text-sm"></i>
                         </button>
@@ -2548,6 +2552,9 @@ function openAudioDrillModal(structId = null) {
                         </button>
                         <button type="button" onclick="stepAudioDrill(1)" class="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Câu tiếp theo">
                             <i class="fa-solid fa-forward-step text-sm"></i>
+                        </button>
+                        <button type="button" onclick="replayAudioDrillCurrent()" class="w-10 h-10 rounded-full bg-white hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Nghe lại câu hiện tại">
+                            <i class="fa-solid fa-rotate-right text-xs"></i>
                         </button>
                     </div>
 
@@ -2622,10 +2629,21 @@ function cycleAudioDrillSpeed() {
 }
 
 function cycleAudioDrillWait() {
-    const waits = [3, 5, 7];
+    const waits = [0, 3, 5, 7];
     const idx = waits.indexOf(audioDrillState.waitSec);
     audioDrillState.waitSec = waits[(idx + 1) % waits.length];
     updateAudioDrillUI();
+}
+
+function toggleAudioDrillLoop() {
+    audioDrillState.continuousLoop = !audioDrillState.continuousLoop;
+    updateAudioDrillUI();
+    showToast(
+        audioDrillState.continuousLoop
+            ? '🔁 Đã bật Phát liên tục (Lặp lại cả Trạm không dừng)'
+            : 'Đã tắt chế độ lặp lại cả Trạm',
+        'info'
+    );
 }
 
 function toggleAudioDrillHideEnglish(checked) {
@@ -2719,37 +2737,49 @@ function startAudioDrillCurrentItem() {
             if (audioDrillState.index + 1 < audioDrillState.situations.length) {
                 audioDrillState.index++;
                 startAudioDrillCurrentItem();
+            } else if (audioDrillState.continuousLoop) {
+                audioDrillState.index = 0;
+                startAudioDrillCurrentItem();
             } else {
                 audioDrillState.isPlaying = false;
                 audioDrillState.phase = 'done';
                 updateAudioDrillUI();
                 showToast('🎉 Tuyệt vời! Bạn đã hoàn thành trọn vòng Nghe–Nói của Trạm này!', 'success');
             }
-        }, 1400);
+        }, 1200);
     };
 
-    if (audioDrillState.mode === 'reflex') {
-        // Chế độ 1: Việt -> Đếm ngược tự nói -> Hiện đáp án & Phát MP3 -> Nghỉ ngắn -> Sang câu tiếp
-        runAudioDrillCountdown(audioDrillState.waitSec, 'thinking', myRunId, () => {
-            if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
-            audioDrillState.phase = 'speaking';
-            updateAudioDrillUI();
-            speakText(item.sampleCasual, null, audioDrillState.speed, {
-                audioId: item.id,
-                onComplete: () => moveNextAfterShortPause()
-            });
-        });
-    } else {
-        // Chế độ 2: Phát mẫu Anh trước -> Đếm ngược cho học viên nhại (Shadowing) -> Sang câu tiếp
+    const speakNow = (afterSpeak) => {
+        if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
         audioDrillState.phase = 'speaking';
         updateAudioDrillUI();
         speakText(item.sampleCasual, null, audioDrillState.speed, {
             audioId: item.id,
             onComplete: () => {
-                if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+                if (typeof afterSpeak === 'function') afterSpeak();
+            }
+        });
+    };
+
+    if (audioDrillState.mode === 'reflex') {
+        // Chế độ 1: Việt -> Đếm ngược tự nói (bỏ qua nếu Chờ: 0s) -> Hiện đáp án & Phát MP3 -> Sang câu tiếp
+        if (audioDrillState.waitSec > 0) {
+            runAudioDrillCountdown(audioDrillState.waitSec, 'thinking', myRunId, () => {
+                speakNow(() => moveNextAfterShortPause());
+            });
+        } else {
+            speakNow(() => moveNextAfterShortPause());
+        }
+    } else {
+        // Chế độ 2: Phát mẫu Anh trước -> Đếm ngược nhại Shadowing (bỏ qua nếu Chờ: 0s) -> Sang câu tiếp
+        speakNow(() => {
+            if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+            if (audioDrillState.waitSec > 0) {
                 runAudioDrillCountdown(audioDrillState.waitSec, 'shadowing', myRunId, () => {
                     moveNextAfterShortPause();
                 });
+            } else {
+                moveNextAfterShortPause();
             }
         });
     }
@@ -2864,12 +2894,23 @@ function updateAudioDrillUI() {
     if (pctEl) pctEl.innerText = `${pct}%`;
     if (barEl) barEl.style.width = `${pct}%`;
 
-    // 5. Quick settings labels
+    // 5. Loop button & Quick settings labels
+    const loopBtn = document.getElementById('ad-loop-btn');
+    if (loopBtn) {
+        if (audioDrillState.continuousLoop) {
+            loopBtn.className = 'w-10 h-10 rounded-full bg-indigo-600 text-white border border-indigo-600 shadow-sm shadow-indigo-200 flex items-center justify-center transition-all';
+            loopBtn.title = 'Đang bật Phát liên tục (Lặp lại cả Trạm) — Bấm để tắt';
+        } else {
+            loopBtn.className = 'w-10 h-10 rounded-full bg-white hover:bg-indigo-50 text-slate-500 border border-slate-200 shadow-2xs flex items-center justify-center transition-all';
+            loopBtn.title = 'Bật Phát liên tục (Lặp lại cả Trạm)';
+        }
+    }
+
     const speedBtn = document.getElementById('ad-speed-btn');
     const waitBtn = document.getElementById('ad-wait-btn');
     const hideChk = document.getElementById('ad-hide-en-toggle');
     if (speedBtn) speedBtn.innerText = `Tốc độ: ${audioDrillState.speed}x`;
-    if (waitBtn) waitBtn.innerText = `Chờ: ${audioDrillState.waitSec}s`;
+    if (waitBtn) waitBtn.innerText = audioDrillState.waitSec === 0 ? 'Chờ: 0s' : `Chờ: ${audioDrillState.waitSec}s`;
     if (hideChk) hideChk.checked = audioDrillState.hideEnglish;
 }
 
