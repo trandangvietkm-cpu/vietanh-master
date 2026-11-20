@@ -280,11 +280,11 @@
             return `/${ipaWords.join(' ').replace(/\s+/g, ' ').trim()}/`;
         }
 
-        // Phát âm câu trả lời chuẩn ngay trên thẻ câu hỏi để người dùng luyện nghe trước khi nhập
+        // Phát âm câu trả lời chuẩn ngay trên thẻ câu hỏi (Ưu tiên file MP3 trong audio/<id>.mp3, tự lùi về Web Speech API nếu chưa có file)
         function speakTargetAnswer(rate = 0.95, btnEl = null) {
             const question = getActiveQuestionObject();
             if (!question) return;
-            speakText(question.sampleCasual, btnEl, rate);
+            speakText(question.sampleCasual, btnEl, rate, { audioId: question.id });
         }
 
         // 4. HỆ THỐNG CHẤM ĐIỂM TẦNG 1 (OFFLINE 0Đ • WORD-LEVEL DIFF + 3 TRẠNG THÁI + CHẶT TỪ NGUYÊN TỪ & CÂU HỎI)
@@ -1607,36 +1607,255 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
         }
 
 
-        // 6. PHÁT ÂM CHUẨN ANH-MỸ (WEB SPEECH API)
-        function speakText(text, btnElement, customRate = 0.95) {
+        // 6. HỆ THỐNG PHÁT ÂM LAI (HƯỚNG 1: WEB SPEECH API TỐI ƯU + CHỌN GIỌNG | HƯỚNG 2: ƯU TIÊN FILE MP3 TẠO SẴN)
+        const VA_TTS_VOICE_STORAGE_KEY = 'va_tts_voice_name';
+        let cachedEnglishVoices = [];
+        let activeMp3Audio = null;
+        const missingMp3AudioIds = new Set();
+
+        function scoreEnglishVoice(voice) {
+            if (!voice || !voice.lang) return -1;
+            const lang = voice.lang.toLowerCase();
+            if (!lang.startsWith('en')) return -1;
+            const name = (voice.name || '').toLowerCase();
+            let score = 0;
+            if (lang === 'en-us') score += 50;
+            else if (lang === 'en-gb') score += 35;
+            else score += 20;
+
+            if (name.includes('natural') || name.includes('neural')) score += 60;
+            if (name.includes('online')) score += 25;
+            if (name.includes('aria') || name.includes('jenny') || name.includes('guy') || name.includes('ava')) score += 30;
+            if (name.includes('enhanced') || name.includes('premium')) score += 35;
+            if (name.includes('google us english') || name.includes('google uk english')) score += 40;
+            else if (name.includes('google')) score += 25;
+            if (name.includes('samantha') || name.includes('daniel') || name.includes('karen')) score += 20;
+            if (name.includes('compact') || name.includes('espeak')) score -= 30;
+            return score;
+        }
+
+        function refreshAvailableEnglishVoices() {
+            if (!('speechSynthesis' in window)) return [];
+            const all = window.speechSynthesis.getVoices() || [];
+            cachedEnglishVoices = all
+                .filter(v => v && v.lang && v.lang.toLowerCase().startsWith('en'))
+                .sort((a, b) => scoreEnglishVoice(b) - scoreEnglishVoice(a));
+            return cachedEnglishVoices;
+        }
+
+        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            refreshAvailableEnglishVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                refreshAvailableEnglishVoices();
+            };
+        }
+
+        function getSelectedEnglishVoice() {
+            const list = cachedEnglishVoices.length > 0 ? cachedEnglishVoices : refreshAvailableEnglishVoices();
+            if (list.length === 0) return null;
+            const savedName = (localStorage.getItem(VA_TTS_VOICE_STORAGE_KEY) || '').trim();
+            if (savedName) {
+                const exact = list.find(v => v.name === savedName);
+                if (exact) return exact;
+            }
+            return list[0];
+        }
+
+        let vaPlaybackToken = 0;
+
+        function stopAllPlayback() {
+            vaPlaybackToken++;
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+            if (activeMp3Audio) {
+                try {
+                    activeMp3Audio.onended = null;
+                    activeMp3Audio.onerror = null;
+                    activeMp3Audio.pause();
+                    activeMp3Audio.currentTime = 0;
+                } catch (e) {}
+                activeMp3Audio = null;
+            }
+            document.querySelectorAll('.speaking-btn').forEach(el => el.classList.remove('speaking-btn'));
+        }
+
+        function speakWithWebSpeechAPI(cleanText, btnElement, customRate = 0.95, onComplete = null, token = vaPlaybackToken) {
             if (!('speechSynthesis' in window)) {
                 showToast("Trình duyệt của bạn không hỗ trợ đọc phát âm.", "warning");
+                if (typeof onComplete === 'function' && token === vaPlaybackToken) onComplete();
+                return;
+            }
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            const chosenVoice = getSelectedEnglishVoice();
+            utterance.lang = chosenVoice ? chosenVoice.lang : 'en-US';
+            utterance.rate = customRate;
+            if (chosenVoice) utterance.voice = chosenVoice;
+
+            let finished = false;
+            const handleDone = () => {
+                if (finished) return;
+                finished = true;
+                if (btnElement) btnElement.classList.remove('speaking-btn');
+                if (typeof onComplete === 'function' && token === vaPlaybackToken) {
+                    onComplete();
+                }
+            };
+
+            if (btnElement) btnElement.classList.add('speaking-btn');
+            utterance.onend = handleDone;
+            utterance.onerror = handleDone;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Hỗ trợ cả file MP3 tạo sẵn (audio/<id>.mp3) và Web Speech API tối ưu + callback onComplete
+        function speakText(text, btnElement = null, customRate = 0.95, options = {}) {
+            const cleanText = String(text || '').replace(/^["']|["']$/g, '').trim();
+            const onComplete = (options && typeof options.onComplete === 'function') ? options.onComplete : null;
+            if (!cleanText) {
+                if (onComplete) onComplete();
                 return;
             }
 
-            // Dừng câu đang đọc trước đó
-            window.speechSynthesis.cancel();
-            document.querySelectorAll('.speaking-btn').forEach(el => el.classList.remove('speaking-btn'));
+            stopAllPlayback();
+            const myToken = vaPlaybackToken;
 
-            const cleanText = text.replace(/^["']|["']$/g, '').trim();
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            utterance.lang = 'en-US';
-            utterance.rate = customRate; // Hỗ trợ tốc độ thường (0.95) và chậm (0.7)
-
-            // Ưu tiên chọn giọng en-US tự nhiên nếu có
-            const voices = window.speechSynthesis.getVoices();
-            const preferredVoice = voices.find(v => v.lang === 'en-US' && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha'))) 
-                                || voices.find(v => v.lang.startsWith('en-US'));
-            if (preferredVoice) utterance.voice = preferredVoice;
-
-            if (btnElement) {
-                btnElement.classList.add('speaking-btn');
-                utterance.onend = () => btnElement.classList.remove('speaking-btn');
-                utterance.onerror = () => btnElement.classList.remove('speaking-btn');
+            // Tự nhận diện audioId nếu đang đọc đúng câu chuẩn của câu hỏi hiện tại
+            let audioId = options && options.audioId ? String(options.audioId).trim() : '';
+            if (!audioId && !(options && options.forceTTS) && typeof getActiveQuestionObject === 'function') {
+                const activeQ = getActiveQuestionObject();
+                if (activeQ && activeQ.id && activeQ.sampleCasual && activeQ.sampleCasual.trim().toLowerCase() === cleanText.toLowerCase()) {
+                    audioId = String(activeQ.id).trim();
+                }
             }
 
-            window.speechSynthesis.speak(utterance);
+            if (audioId && !missingMp3AudioIds.has(audioId) && !(options && options.forceTTS)) {
+                const audioUrl = `./audio/${encodeURIComponent(audioId)}.mp3`;
+                const audio = new Audio(audioUrl);
+                audio.playbackRate = customRate;
+                activeMp3Audio = audio;
+
+                if (btnElement) btnElement.classList.add('speaking-btn');
+
+                let fallbackTriggered = false;
+                const triggerFallback = () => {
+                    if (fallbackTriggered || myToken !== vaPlaybackToken) return;
+                    fallbackTriggered = true;
+                    missingMp3AudioIds.add(audioId);
+                    if (activeMp3Audio === audio) activeMp3Audio = null;
+                    if (btnElement) btnElement.classList.remove('speaking-btn');
+                    speakWithWebSpeechAPI(cleanText, btnElement, customRate, onComplete, myToken);
+                };
+
+                audio.onended = () => {
+                    if (activeMp3Audio === audio) activeMp3Audio = null;
+                    if (btnElement) btnElement.classList.remove('speaking-btn');
+                    if (onComplete && myToken === vaPlaybackToken) onComplete();
+                };
+                audio.onerror = triggerFallback;
+
+                const playPromise = audio.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(triggerFallback);
+                }
+                return;
+            }
+
+            speakWithWebSpeechAPI(cleanText, btnElement, customRate, onComplete, myToken);
         }
+
+        // Modal chọn giọng đọc (Web Speech API) + thông tin chế độ MP3
+        function openVoiceSettingsModal() {
+            const existing = document.getElementById('va-voice-settings-modal');
+            if (existing) existing.remove();
+
+            const voices = refreshAvailableEnglishVoices();
+            const currentVoice = getSelectedEnglishVoice();
+            const savedName = (localStorage.getItem(VA_TTS_VOICE_STORAGE_KEY) || '').trim();
+            const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+            const optionsHtml = voices.length > 0
+                ? `<option value="" ${!savedName ? 'selected' : ''}>✨ Tự động chọn giọng hay nhất (${esc(voices[0].name)})</option>` +
+                  voices.slice(0, 25).map(v => {
+                      const isSel = savedName === v.name ? 'selected' : '';
+                      const tag = scoreEnglishVoice(v) >= 95 ? ' ★' : '';
+                      return `<option value="${esc(v.name)}" ${isSel}>${esc(v.name)} (${esc(v.lang)})${tag}</option>`;
+                  }).join('')
+                : `<option value="">Trình duyệt đang dùng giọng mặc định hệ thống</option>`;
+
+            const modal = document.createElement('div');
+            modal.id = 'va-voice-settings-modal';
+            modal.className = 'fixed inset-0 z-50 bg-slate-900/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4';
+            modal.setAttribute('onclick', 'if(event.target === this) this.remove()');
+            modal.innerHTML = `
+                <div class="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
+                    <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/80 via-white to-slate-50">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center text-base shrink-0">
+                                <i class="fa-solid fa-headphones"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-extrabold text-sm sm:text-base text-slate-900 leading-tight">Cài đặt Giọng đọc</h3>
+                                <p class="text-[11px] text-slate-500">Chọn giọng đọc phù hợp trên thiết bị của bạn</p>
+                            </div>
+                        </div>
+                        <button type="button" onclick="document.getElementById('va-voice-settings-modal')?.remove()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="p-5 space-y-4">
+                        <div class="space-y-1.5">
+                            <label for="va-voice-select" class="block text-xs font-bold text-slate-700">Giọng đọc tiếng Anh:</label>
+                            <select id="va-voice-select" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                ${optionsHtml}
+                            </select>
+                            <p class="text-[11px] text-slate-400">Dấu <strong>★</strong> là các giọng tự nhiên chất lượng cao trên thiết bị của bạn.</p>
+                        </div>
+                        <p class="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200/80 rounded-2xl p-3">
+                            <i class="fa-solid fa-circle-info text-indigo-500 mr-1"></i>
+                            Các câu trong lộ trình ưu tiên dùng giọng thu âm chuẩn; tùy chọn trên áp dụng cho từ vựng lẻ và câu luyện thêm.
+                        </p>
+                        <div class="flex items-center justify-between gap-2 pt-1">
+                            <button type="button" onclick="previewSelectedVoice()" class="px-4 py-2.5 rounded-xl text-xs font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all">
+                                <i class="fa-solid fa-play mr-1"></i>Nghe thử
+                            </button>
+                            <button type="button" onclick="saveSelectedVoice()" class="flex-1 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all">
+                                Lưu giọng đọc
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function previewSelectedVoice() {
+            const sel = document.getElementById('va-voice-select');
+            if (sel) localStorage.setItem(VA_TTS_VOICE_STORAGE_KEY, sel.value);
+            speakText("Hi, I'm Linh and I'm a teacher.", null, 0.95, { forceTTS: true });
+        }
+
+        function saveSelectedVoice() {
+            const sel = document.getElementById('va-voice-select');
+            if (sel) localStorage.setItem(VA_TTS_VOICE_STORAGE_KEY, sel.value);
+            document.getElementById('va-voice-settings-modal')?.remove();
+            showToast("Đã lưu tùy chọn giọng đọc tiếng Anh!", "success");
+        }
+
+        // Tự động gắn nút chọn giọng nhỏ gọn ngay cạnh nút "Chậm" (không cần sửa index.html)
+        document.addEventListener('DOMContentLoaded', () => {
+            const slowBtn = document.getElementById('slow-listen-btn');
+            if (slowBtn && slowBtn.parentElement && !document.getElementById('voice-settings-btn')) {
+                const vBtn = document.createElement('button');
+                vBtn.id = 'voice-settings-btn';
+                vBtn.type = 'button';
+                vBtn.onclick = openVoiceSettingsModal;
+                vBtn.className = 'w-8 h-8 rounded-xl text-xs font-bold text-indigo-600 bg-white hover:bg-indigo-100 border border-indigo-200/70 flex items-center justify-center transition-all shrink-0';
+                vBtn.title = 'Chọn giọng đọc tiếng Anh';
+                vBtn.innerHTML = '<i class="fa-solid fa-sliders"></i>';
+                slowBtn.parentElement.appendChild(vBtn);
+            }
+        });
 
     // ==================== HỆ THỐNG LUYỆN NÓI & CHẤM ĐIỂM PHÁT ÂM TỪNG TỪ ====================
         let speechRecognizer = null;

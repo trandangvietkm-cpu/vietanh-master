@@ -1263,6 +1263,8 @@
 
             if (target === 'theory') {
                 if (theoryPanel) theoryPanel.classList.remove('hidden');
+                const curStruct = (SENTENCE_STRUCTURES || []).find(s => s.id === state.selectedStructureId);
+                if (curStruct) renderStationVocabInTheory(curStruct);
                 if (detailsBody) detailsBody.classList.remove('hidden');
                 if (stepperCard) stepperCard.classList.add('hidden');
                 if (exerciseCard) exerciseCard.classList.add('hidden');
@@ -1315,6 +1317,12 @@
             document.getElementById('ws-struct-formula').innerText = struct.formula;
             document.getElementById('ws-struct-desc').innerText = struct.description;
             document.getElementById('ws-struct-tips').innerHTML = (struct.tips || []).map(t => `<p>${t}</p>`).join('');
+
+            // Đảm bảo nút Luyện Nghe–Nói (Audio Drill) xuất hiện trên thanh tiêu đề Trạm
+            ensureAudioDrillTriggerButton();
+
+            // Render dải Từ vựng trọng tâm của Trạm trong Tab Lý thuyết
+            renderStationVocabInTheory(struct);
 
             // Mặc định mở thẳng Tab Phòng luyện dịch (⚡)
             switchWorkspaceSubTab('practice');
@@ -2089,6 +2097,7 @@
       closeStructFilterModal();
       closeTopicFilterModal();
       closeReviewBoxModal();
+      closeAudioDrillModal();
     }
   });
 
@@ -2317,3 +2326,553 @@ function renderReviewBoxModal() {
     `;
     document.body.appendChild(modal);
 }
+
+
+// ==================== TỪ VỰNG TRỌNG TÂM CỦA TRẠM (TRONG TAB LÝ THUYẾT) ====================
+function getStationVocabItems(structId) {
+    const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
+    return repo.filter(item => item && item.structId === structId);
+}
+
+function speakStationVocabItem(vocabId, btnEl) {
+    const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
+    const item = repo.find(v => v.id === vocabId);
+    if (item && item.term && typeof speakText === 'function') {
+        speakText(item.term, btnEl, 0.9);
+    }
+}
+
+function saveStationVocabItem(vocabId, btnEl) {
+    const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
+    const item = repo.find(v => v.id === vocabId);
+    if (!item) return;
+
+    if (typeof window.saveWordToVocabBank === 'function') {
+        window.saveWordToVocabBank(item.term, item.vi, btnEl);
+    } else {
+        showToast('Chức năng Sổ tay từ vựng chưa sẵn sàng.', 'warning');
+    }
+}
+
+function renderStationVocabInTheory(struct) {
+    const box = document.getElementById('ws-station-vocab-box');
+    const listEl = document.getElementById('ws-station-vocab-list');
+    const countEl = document.getElementById('ws-station-vocab-count');
+    if (!box || !listEl || !struct) return;
+
+    const items = getStationVocabItems(struct.id);
+    if (items.length === 0) {
+        box.classList.add('hidden');
+        listEl.innerHTML = '';
+        return;
+    }
+
+    box.classList.remove('hidden');
+    if (countEl) countEl.innerText = `${items.length} từ`;
+
+    let savedSet = new Set();
+    try {
+        const savedBank = JSON.parse(localStorage.getItem('va_vocab_bank')) || [];
+        savedSet = new Set(savedBank.map(v => String(v.en || '').trim().toLowerCase()));
+    } catch (e) {}
+
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    listEl.innerHTML = items.map(item => {
+        const isSaved = savedSet.has(String(item.term || '').trim().toLowerCase());
+        const saveBtn = isSaved
+            ? `<span class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] inline-flex items-center gap-1 shrink-0"><i class="fa-solid fa-check text-[10px]"></i>Đã lưu</span>`
+            : `<button type="button" onclick="saveStationVocabItem('${item.id}', this)" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-indigo-600 text-amber-800 hover:text-white border border-amber-200/90 hover:border-indigo-600 font-bold text-[11px] inline-flex items-center gap-1 shrink-0 transition-all" title="Lưu vào Sổ tay từ vựng"><i class="fa-solid fa-plus text-[9px]"></i>Lưu</button>`;
+
+        return `
+            <div class="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 hover:border-indigo-200 transition-all flex items-start justify-between gap-2.5">
+                <div class="min-w-0 flex-1 space-y-0.5">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="font-extrabold text-sm text-indigo-950">${esc(item.term)}</span>
+                        ${item.pos ? `<span class="text-[10px] font-bold text-slate-400">(${esc(item.pos)})</span>` : ''}
+                        <span class="font-mono text-[11px] text-indigo-600">${esc(item.ipa)}</span>
+                    </div>
+                    <p class="text-xs font-bold text-emerald-700">${esc(item.vi)}</p>
+                    ${item.exampleEn ? `<p class="text-[11px] text-slate-500 italic truncate" title="${esc(item.exampleVi)}">"${esc(item.exampleEn)}"</p>` : ''}
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0 pt-0.5">
+                    <button type="button" onclick="speakStationVocabItem('${item.id}', this)" class="w-8 h-8 rounded-full bg-white hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200/80 flex items-center justify-center transition-all" title="Nghe phát âm">
+                        <i class="fa-solid fa-volume-high text-xs"></i>
+                    </button>
+                    ${saveBtn}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+
+// ==================== LUYỆN NGHE–NÓI TOÀN TRẠM (AUDIO DRILL & SHADOWING) ====================
+const audioDrillState = {
+    isOpen: false,
+    structId: null,
+    situations: [],
+    index: 0,
+    mode: 'reflex',        // 'reflex' (Việt -> Nghỉ -> Anh) | 'shadowing' (Anh -> Nghỉ -> Nhại)
+    isPlaying: false,
+    phase: 'idle',         // 'idle' | 'thinking' | 'speaking' | 'shadowing' | 'pause' | 'done'
+    speed: 0.85,           // 0.75 | 0.85 | 1.0
+    waitSec: 5,            // 3 | 5 | 7
+    hideEnglish: false,
+    revealedManually: false,
+    remainingMs: 0,
+    totalWaitMs: 5000,
+    timerId: null,
+    intervalId: null,
+    runId: 0
+};
+
+function ensureAudioDrillTriggerButton() {
+    const switcher = document.getElementById('ws-subtab-switcher');
+    if (!switcher || !switcher.parentElement) return;
+    if (document.getElementById('ws-audio-drill-btn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'ws-audio-drill-btn';
+    btn.type = 'button';
+    btn.onclick = () => openAudioDrillModal();
+    btn.className = 'inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 shadow-2xs transition-all shrink-0';
+    btn.title = 'Luyện Nghe–Nói & Shadowing toàn Trạm';
+    btn.innerHTML = `<i class="fa-solid fa-headphones text-indigo-600 text-xs"></i><span class="hidden sm:inline">Nghe–Nói</span>`;
+
+    switcher.parentElement.insertBefore(btn, switcher);
+}
+
+function clearAudioDrillTimers() {
+    if (audioDrillState.timerId) {
+        clearTimeout(audioDrillState.timerId);
+        audioDrillState.timerId = null;
+    }
+    if (audioDrillState.intervalId) {
+        clearInterval(audioDrillState.intervalId);
+        audioDrillState.intervalId = null;
+    }
+}
+
+function openAudioDrillModal(structId = null) {
+    const targetId = structId || state.selectedStructureId;
+    const struct = (SENTENCE_STRUCTURES || []).find(s => s.id === targetId);
+    if (!struct || !Array.isArray(struct.situations) || struct.situations.length === 0) {
+        showToast('Trạm này chưa có câu hỏi nào để luyện Nghe–Nói.', 'warning');
+        return;
+    }
+
+    closeAudioDrillModal();
+
+    audioDrillState.isOpen = true;
+    audioDrillState.structId = struct.id;
+    audioDrillState.situations = struct.situations;
+    audioDrillState.index = Math.min(state.currentSituationIndex || 0, struct.situations.length - 1);
+    audioDrillState.isPlaying = false;
+    audioDrillState.phase = 'idle';
+    audioDrillState.revealedManually = false;
+    audioDrillState.runId++;
+
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const modal = document.createElement('div');
+    modal.id = 'va-audio-drill-modal';
+    modal.className = 'fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4';
+    modal.setAttribute('onclick', 'if(event.target === this) closeAudioDrillModal()');
+    modal.innerHTML = `
+        <div class="bg-slate-50 rounded-t-3xl sm:rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 px-5 py-4 text-white flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div class="w-9 h-9 rounded-2xl bg-white/15 flex items-center justify-center text-base shrink-0">
+                        <i class="fa-solid fa-headphones text-amber-300"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="font-extrabold text-sm sm:text-base leading-tight truncate">Luyện Nghe–Nói • ${esc(struct.shortName || struct.title)}</h3>
+                        <p class="text-[11px] text-indigo-200 truncate">Tự động phát & đếm ngược qua ${struct.situations.length} câu</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeAudioDrillModal()" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center shrink-0 transition-all" title="Đóng (Esc)">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="p-4 sm:p-5 space-y-3.5 max-h-[84vh] overflow-y-auto">
+                <!-- Chọn 2 chế độ: Phản xạ Nói vs Shadowing -->
+                <div class="grid grid-cols-2 gap-1.5 bg-slate-200/75 p-1 rounded-2xl text-xs font-bold">
+                    <button id="ad-mode-reflex" type="button" onclick="setAudioDrillMode('reflex')" class="py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-bolt text-amber-500"></i>
+                        <span>Phản xạ Nói</span>
+                    </button>
+                    <button id="ad-mode-shadowing" type="button" onclick="setAudioDrillMode('shadowing')" class="py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-ear-listen text-indigo-600"></i>
+                        <span>Nghe & Shadowing</span>
+                    </button>
+                </div>
+
+                <!-- Thẻ Câu tiếng Việt -->
+                <div class="bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-5 text-center space-y-2 relative">
+                    <button type="button" onclick="replayAudioDrillCurrent()" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe lại câu tiếng Anh">
+                        <i class="fa-solid fa-volume-high text-xs"></i>
+                    </button>
+                    <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Câu tiếng Việt</span>
+                    <p id="ad-vi-text" class="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug px-2">...</p>
+                </div>
+
+                <!-- Thanh trạng thái & đếm ngược khoảng lặng -->
+                <div id="ad-status-box" class="relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-center transition-all">
+                    <div id="ad-countdown-fill" class="absolute inset-y-0 left-0 bg-emerald-300/35 transition-all duration-100" style="width: 0%"></div>
+                    <p id="ad-status-text" class="relative z-10 text-xs sm:text-sm font-extrabold text-emerald-900">Bấm Phát để bắt đầu luyện Nghe–Nói</p>
+                </div>
+
+                <!-- Thẻ Đáp án chuẩn (Có thể làm mờ khi đang đếm ngược hoặc bật Ẩn tiếng Anh) -->
+                <div onclick="revealAudioDrillAnswerManually()" class="cursor-pointer bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-4 sm:p-5 space-y-1.5 relative transition-all hover:border-indigo-300" title="Chạm để hiện / nghe đáp án">
+                    <div class="flex items-center justify-between text-[11px] font-bold text-slate-400">
+                        <span class="uppercase tracking-wider">Đáp án chuẩn</span>
+                        <span id="ad-reveal-hint" class="text-indigo-500"></span>
+                    </div>
+                    <div id="ad-en-wrap" class="transition-all duration-200 space-y-1">
+                        <p id="ad-en-text" class="text-base sm:text-lg font-extrabold text-indigo-950 leading-snug">...</p>
+                        <p id="ad-ipa-text" class="font-mono text-xs text-indigo-600">...</p>
+                    </div>
+                </div>
+
+                <!-- Thanh điều khiển chính: Trước | Phát/Tạm dừng | Tiếp -->
+                <div class="pt-1 space-y-3">
+                    <div class="flex items-center justify-center gap-6">
+                        <button type="button" onclick="stepAudioDrill(-1)" class="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Câu trước">
+                            <i class="fa-solid fa-backward-step text-sm"></i>
+                        </button>
+                        <button id="ad-play-btn" type="button" onclick="toggleAudioDrillPlay()" class="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 flex items-center justify-center text-xl transition-all" title="Phát / Tạm dừng">
+                            <i id="ad-play-icon" class="fa-solid fa-play ml-0.5"></i>
+                        </button>
+                        <button type="button" onclick="stepAudioDrill(1)" class="w-11 h-11 rounded-full bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-2xs flex items-center justify-center transition-all" title="Câu tiếp theo">
+                            <i class="fa-solid fa-forward-step text-sm"></i>
+                        </button>
+                    </div>
+
+                    <!-- Bộ đếm câu & Thanh tiến độ toàn Trạm -->
+                    <div class="space-y-1.5">
+                        <div class="flex items-center justify-between text-xs font-bold text-slate-500 px-1">
+                            <span id="ad-counter-text">Câu 1 / 15</span>
+                            <span id="ad-progress-pct" class="text-indigo-600">7%</span>
+                        </div>
+                        <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div id="ad-progress-bar" class="h-full bg-indigo-600 rounded-full transition-all duration-300" style="width: 7%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hàng tùy chọn nhanh: Tốc độ | Thời gian chờ | Ẩn tiếng Anh -->
+                <div class="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5">
+                        <button id="ad-speed-btn" type="button" onclick="cycleAudioDrillSpeed()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-white hover:bg-indigo-50 text-indigo-700 border border-slate-200 transition-all">
+                            Tốc độ: 0.85x
+                        </button>
+                        <button id="ad-wait-btn" type="button" onclick="cycleAudioDrillWait()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-all">
+                            Chờ: 5s
+                        </button>
+                    </div>
+                    <label class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                        <input id="ad-hide-en-toggle" type="checkbox" onchange="toggleAudioDrillHideEnglish(this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500">
+                        <span>Ẩn tiếng Anh</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    document.body.style.overflow = 'hidden';
+    updateAudioDrillUI();
+}
+
+function closeAudioDrillModal() {
+    clearAudioDrillTimers();
+    audioDrillState.isPlaying = false;
+    audioDrillState.isOpen = false;
+    audioDrillState.runId++;
+    if (typeof stopAllPlayback === 'function') stopAllPlayback();
+    const modal = document.getElementById('va-audio-drill-modal');
+    if (modal) modal.remove();
+    document.body.style.overflow = '';
+}
+
+function setAudioDrillMode(mode) {
+    audioDrillState.mode = mode === 'shadowing' ? 'shadowing' : 'reflex';
+    audioDrillState.waitSec = audioDrillState.mode === 'shadowing' ? 3 : 5;
+    audioDrillState.revealedManually = false;
+    clearAudioDrillTimers();
+    audioDrillState.runId++;
+    if (typeof stopAllPlayback === 'function') stopAllPlayback();
+
+    if (audioDrillState.isPlaying) {
+        startAudioDrillCurrentItem();
+    } else {
+        audioDrillState.phase = 'idle';
+        updateAudioDrillUI();
+    }
+}
+
+function cycleAudioDrillSpeed() {
+    const speeds = [0.75, 0.85, 1.0];
+    const idx = speeds.indexOf(audioDrillState.speed);
+    audioDrillState.speed = speeds[(idx + 1) % speeds.length];
+    updateAudioDrillUI();
+}
+
+function cycleAudioDrillWait() {
+    const waits = [3, 5, 7];
+    const idx = waits.indexOf(audioDrillState.waitSec);
+    audioDrillState.waitSec = waits[(idx + 1) % waits.length];
+    updateAudioDrillUI();
+}
+
+function toggleAudioDrillHideEnglish(checked) {
+    audioDrillState.hideEnglish = Boolean(checked);
+    audioDrillState.revealedManually = false;
+    updateAudioDrillUI();
+}
+
+function revealAudioDrillAnswerManually() {
+    audioDrillState.revealedManually = !audioDrillState.revealedManually;
+    updateAudioDrillUI();
+}
+
+function replayAudioDrillCurrent() {
+    const item = audioDrillState.situations[audioDrillState.index];
+    if (!item || typeof speakText !== 'function') return;
+    speakText(item.sampleCasual, null, audioDrillState.speed, { audioId: item.id });
+}
+
+function toggleAudioDrillPlay() {
+    if (audioDrillState.isPlaying) {
+        audioDrillState.isPlaying = false;
+        audioDrillState.phase = 'idle';
+        audioDrillState.runId++;
+        clearAudioDrillTimers();
+        if (typeof stopAllPlayback === 'function') stopAllPlayback();
+        updateAudioDrillUI();
+    } else {
+        if (audioDrillState.phase === 'done') {
+            audioDrillState.index = 0;
+        }
+        audioDrillState.isPlaying = true;
+        startAudioDrillCurrentItem();
+    }
+}
+
+function stepAudioDrill(delta) {
+    const total = audioDrillState.situations.length;
+    if (total === 0) return;
+    clearAudioDrillTimers();
+    audioDrillState.runId++;
+    if (typeof stopAllPlayback === 'function') stopAllPlayback();
+    audioDrillState.index = (audioDrillState.index + delta + total) % total;
+    audioDrillState.revealedManually = false;
+
+    if (audioDrillState.isPlaying) {
+        startAudioDrillCurrentItem();
+    } else {
+        audioDrillState.phase = 'idle';
+        updateAudioDrillUI();
+    }
+}
+
+function runAudioDrillCountdown(seconds, phaseName, myRunId, onDone) {
+    clearAudioDrillTimers();
+    audioDrillState.phase = phaseName;
+    audioDrillState.totalWaitMs = seconds * 1000;
+    audioDrillState.remainingMs = audioDrillState.totalWaitMs;
+    updateAudioDrillUI();
+
+    const startTime = Date.now();
+    audioDrillState.intervalId = setInterval(() => {
+        if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) {
+            clearAudioDrillTimers();
+            return;
+        }
+        const elapsed = Date.now() - startTime;
+        audioDrillState.remainingMs = Math.max(0, audioDrillState.totalWaitMs - elapsed);
+        updateAudioDrillCountdownBar();
+        if (audioDrillState.remainingMs <= 0) {
+            clearAudioDrillTimers();
+            if (typeof onDone === 'function') onDone();
+        }
+    }, 100);
+}
+
+function startAudioDrillCurrentItem() {
+    clearAudioDrillTimers();
+    const myRunId = ++audioDrillState.runId;
+    const item = audioDrillState.situations[audioDrillState.index];
+    if (!item) return;
+
+    audioDrillState.revealedManually = false;
+
+    const moveNextAfterShortPause = () => {
+        if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+        audioDrillState.phase = 'pause';
+        updateAudioDrillUI();
+        audioDrillState.timerId = setTimeout(() => {
+            if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+            if (audioDrillState.index + 1 < audioDrillState.situations.length) {
+                audioDrillState.index++;
+                startAudioDrillCurrentItem();
+            } else {
+                audioDrillState.isPlaying = false;
+                audioDrillState.phase = 'done';
+                updateAudioDrillUI();
+                showToast('🎉 Tuyệt vời! Bạn đã hoàn thành trọn vòng Nghe–Nói của Trạm này!', 'success');
+            }
+        }, 1400);
+    };
+
+    if (audioDrillState.mode === 'reflex') {
+        // Chế độ 1: Việt -> Đếm ngược tự nói -> Hiện đáp án & Phát MP3 -> Nghỉ ngắn -> Sang câu tiếp
+        runAudioDrillCountdown(audioDrillState.waitSec, 'thinking', myRunId, () => {
+            if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+            audioDrillState.phase = 'speaking';
+            updateAudioDrillUI();
+            speakText(item.sampleCasual, null, audioDrillState.speed, {
+                audioId: item.id,
+                onComplete: () => moveNextAfterShortPause()
+            });
+        });
+    } else {
+        // Chế độ 2: Phát mẫu Anh trước -> Đếm ngược cho học viên nhại (Shadowing) -> Sang câu tiếp
+        audioDrillState.phase = 'speaking';
+        updateAudioDrillUI();
+        speakText(item.sampleCasual, null, audioDrillState.speed, {
+            audioId: item.id,
+            onComplete: () => {
+                if (!audioDrillState.isPlaying || myRunId !== audioDrillState.runId) return;
+                runAudioDrillCountdown(audioDrillState.waitSec, 'shadowing', myRunId, () => {
+                    moveNextAfterShortPause();
+                });
+            }
+        });
+    }
+}
+
+function updateAudioDrillCountdownBar() {
+    const fillEl = document.getElementById('ad-countdown-fill');
+    const statusText = document.getElementById('ad-status-text');
+    if (!fillEl || !statusText) return;
+
+    const secsLeft = Math.max(1, Math.ceil(audioDrillState.remainingMs / 1000));
+    const pct = audioDrillState.totalWaitMs > 0
+        ? Math.min(100, Math.round(((audioDrillState.totalWaitMs - audioDrillState.remainingMs) / audioDrillState.totalWaitMs) * 100))
+        : 0;
+    fillEl.style.width = `${pct}%`;
+
+    if (audioDrillState.phase === 'thinking') {
+        statusText.innerText = `Đang đếm ngược: ${secsLeft}s... Hãy tự dịch nói thành tiếng!`;
+    } else if (audioDrillState.phase === 'shadowing') {
+        statusText.innerText = `🎙️ Đến lượt bạn nhại lại: ${secsLeft}s...`;
+    }
+}
+
+function updateAudioDrillUI() {
+    if (!audioDrillState.isOpen) return;
+    const item = audioDrillState.situations[audioDrillState.index];
+    const total = audioDrillState.situations.length;
+    if (!item) return;
+
+    // 1. Mode pills
+    const reflexBtn = document.getElementById('ad-mode-reflex');
+    const shadowBtn = document.getElementById('ad-mode-shadowing');
+    const activePill = 'py-2 px-2 rounded-xl bg-white text-indigo-700 shadow-2xs font-extrabold transition-all flex items-center justify-center gap-1.5';
+    const inactivePill = 'py-2 px-2 rounded-xl text-slate-600 hover:text-indigo-700 font-bold transition-all flex items-center justify-center gap-1.5';
+    if (reflexBtn) reflexBtn.className = audioDrillState.mode === 'reflex' ? activePill : inactivePill;
+    if (shadowBtn) shadowBtn.className = audioDrillState.mode === 'shadowing' ? activePill : inactivePill;
+
+    // 2. Sentences & IPA
+    const viEl = document.getElementById('ad-vi-text');
+    const enEl = document.getElementById('ad-en-text');
+    const ipaEl = document.getElementById('ad-ipa-text');
+    const enWrap = document.getElementById('ad-en-wrap');
+    const revealHint = document.getElementById('ad-reveal-hint');
+
+    if (viEl) viEl.innerText = item.vi || '';
+    if (enEl) enEl.innerText = item.sampleCasual || '';
+    if (ipaEl) ipaEl.innerText = item.ipa || (typeof sentenceToIPA === 'function' ? sentenceToIPA(item.sampleCasual) : '');
+
+    // Ẩn mờ tiếng Anh khi: bật "Ẩn tiếng Anh" HOẶC đang đếm ngược suy nghĩ ở chế độ Phản xạ Nói (trừ khi người dùng chạm tay mở xem)
+    const shouldBlur = !audioDrillState.revealedManually && (
+        audioDrillState.hideEnglish ||
+        (audioDrillState.mode === 'reflex' && (audioDrillState.phase === 'thinking' || audioDrillState.phase === 'idle'))
+    );
+
+    if (enWrap) {
+        if (shouldBlur) enWrap.classList.add('blur-sm', 'select-none', 'opacity-55');
+        else enWrap.classList.remove('blur-sm', 'select-none', 'opacity-55');
+    }
+    if (revealHint) {
+        revealHint.innerText = shouldBlur ? 'Chạm để xem đáp án' : '';
+    }
+
+    // 3. Status box & countdown fill
+    const statusBox = document.getElementById('ad-status-box');
+    const statusText = document.getElementById('ad-status-text');
+    const fillEl = document.getElementById('ad-countdown-fill');
+
+    if (statusBox && statusText && fillEl) {
+        if (audioDrillState.phase === 'thinking' || audioDrillState.phase === 'shadowing') {
+            statusBox.className = 'relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-center transition-all';
+            statusText.className = 'relative z-10 text-xs sm:text-sm font-extrabold text-emerald-900';
+            updateAudioDrillCountdownBar();
+        } else if (audioDrillState.phase === 'speaking') {
+            statusBox.className = 'relative overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/90 px-4 py-3 text-center transition-all';
+            statusText.className = 'relative z-10 text-xs sm:text-sm font-extrabold text-indigo-800';
+            fillEl.style.width = '100%';
+            statusText.innerText = audioDrillState.mode === 'shadowing'
+                ? `🔊 Đang phát mẫu (${audioDrillState.speed}x)... Hãy lắng nghe ngữ điệu`
+                : `🔊 Đang phát đáp án chuẩn (${audioDrillState.speed}x)...`;
+        } else if (audioDrillState.phase === 'pause') {
+            statusBox.className = 'relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-center transition-all';
+            statusText.className = 'relative z-10 text-xs font-bold text-slate-600';
+            fillEl.style.width = '0%';
+            statusText.innerText = 'Chuẩn bị sang câu tiếp theo...';
+        } else if (audioDrillState.phase === 'done') {
+            statusBox.className = 'relative overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center transition-all';
+            statusText.className = 'relative z-10 text-xs sm:text-sm font-extrabold text-amber-900';
+            fillEl.style.width = '0%';
+            statusText.innerText = '🎉 Đã hoàn thành toàn bộ Trạm! Bấm Phát để luyện lại.';
+        } else {
+            statusBox.className = 'relative overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-center transition-all';
+            statusText.className = 'relative z-10 text-xs font-bold text-indigo-700';
+            fillEl.style.width = '0%';
+            statusText.innerText = audioDrillState.mode === 'shadowing'
+                ? 'Bấm Phát để nghe mẫu rồi nhại lại theo nhịp'
+                : 'Bấm Phát: nhìn tiếng Việt → tự nói → nghe đáp án chuẩn';
+        }
+    }
+
+    // 4. Play / Pause icon & progress
+    const playIcon = document.getElementById('ad-play-icon');
+    if (playIcon) {
+        playIcon.className = audioDrillState.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play ml-0.5';
+    }
+
+    const curNum = audioDrillState.index + 1;
+    const pct = Math.round((curNum / total) * 100);
+    const counterEl = document.getElementById('ad-counter-text');
+    const pctEl = document.getElementById('ad-progress-pct');
+    const barEl = document.getElementById('ad-progress-bar');
+    if (counterEl) counterEl.innerText = `Câu ${curNum} / ${total}`;
+    if (pctEl) pctEl.innerText = `${pct}%`;
+    if (barEl) barEl.style.width = `${pct}%`;
+
+    // 5. Quick settings labels
+    const speedBtn = document.getElementById('ad-speed-btn');
+    const waitBtn = document.getElementById('ad-wait-btn');
+    const hideChk = document.getElementById('ad-hide-en-toggle');
+    if (speedBtn) speedBtn.innerText = `Tốc độ: ${audioDrillState.speed}x`;
+    if (waitBtn) waitBtn.innerText = `Chờ: ${audioDrillState.waitSec}s`;
+    if (hideChk) hideChk.checked = audioDrillState.hideEnglish;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    ensureAudioDrillTriggerButton();
+});
