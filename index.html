@@ -1382,43 +1382,6 @@
     <script src="./js/vocab_module.js"></script>
     <script src="./js/gemini_assistant.js"></script>
 
-<!-- ==================== An huy hieu netlify ==================== -->
-<script>
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      document.querySelectorAll('netlify-badge, [data-netlify-badge], a[href*="netlify.com"]').forEach(el => {
-        el.style.display = 'none';
-      });
-      document.querySelectorAll('body > *').forEach(el => {
-        if (el.shadowRoot && el.shadowRoot.innerHTML.includes('Netlify')) {
-          el.style.display = 'none';
-        }
-      });
-    }, 500);
-  });
-</script>
-<script>
-  (function hideNetlifyBadge() {
-    const cleanBadge = () => {
-      document.querySelectorAll('netlify-badge, [data-netlify-badge], a[href*="netlify.com"]').forEach(el => {
-        el.style.setProperty('display', 'none', 'important');
-        el.style.setProperty('visibility', 'hidden', 'important');
-      });
-      document.querySelectorAll('body > div, body > span, body > aside').forEach(el => {
-        const text = (el.textContent || '').trim();
-        const hasShadow = !!el.shadowRoot;
-        if (text.includes('Powered by Netlify') || hasShadow) {
-          const rect = el.getBoundingClientRect();
-          if (rect.bottom >= window.innerHeight - 120 && rect.right >= window.innerWidth - 260) {
-            el.style.setProperty('display', 'none', 'important');
-          }
-        }
-      });
-    };
-    cleanBadge();
-    const timer = setInterval(cleanBadge, 300);
-    setTimeout(() => clearInterval(timer), 4000);
-  })();
-</script>
+
 </body>
 </html>
