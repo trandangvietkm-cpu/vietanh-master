@@ -26,12 +26,17 @@
             display: none !important;
         }
 
-        /* Tối ưu Phòng luyện dịch tràn lề ngang (Full-width) trên Mobile & Tab Lý thuyết / Luyện dịch */
+        /* Tối ưu Phòng luyện dịch tràn lề ngang (Full-width) trên Mobile cho cả Sơ đồ học & Chủ đề tự do */
         @media (max-width: 768px) {
             body.va-in-workspace #practice-mode-switcher-bar {
                 display: none !important;
             }
-            body.va-in-workspace main {
+            body.va-in-topic-practice #practice-mode-switcher-bar {
+                margin-left: 12px !important;
+                margin-right: 12px !important;
+            }
+            body.va-in-workspace main,
+            body.va-in-topic-practice main {
                 padding-left: 0 !important;
                 padding-right: 0 !important;
                 padding-top: 0.75rem !important;
@@ -39,21 +44,26 @@
             }
             body.va-in-workspace #view-practice,
             body.va-in-workspace #structure-mode-container,
-            body.va-in-workspace #structure-workspace-view {
+            body.va-in-workspace #structure-workspace-view,
+            body.va-in-topic-practice #view-practice,
+            body.va-in-topic-practice #topic-mode-container {
                 gap: 0.75rem !important;
             }
-            body.va-in-workspace #structure-workspace-view > :not([hidden]) ~ :not([hidden]) {
+            body.va-in-workspace #structure-workspace-view > :not([hidden]) ~ :not([hidden]),
+            body.va-in-topic-practice #view-practice > :not([hidden]) ~ :not([hidden]) {
                 margin-top: 0.75rem !important;
             }
-            body.va-in-workspace #ws-top-bar {
+            body.va-in-workspace #ws-top-bar,
+            body.va-in-workspace #ws-theory-panel,
+            body.va-in-topic-practice #checkpoint-mode-banner {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
             }
-            body.va-in-workspace #ws-theory-panel {
-                padding-left: 12px !important;
-                padding-right: 12px !important;
+            body.va-in-topic-practice #checkpoint-mode-banner {
+                border-radius: 0 !important;
             }
-            body.va-in-workspace #ws-stepper-card {
+            body.va-in-workspace #ws-stepper-card,
+            body.va-in-topic-practice #topic-filter-card {
                 border-radius: 0 !important;
                 border-left: none !important;
                 border-right: none !important;
@@ -61,39 +71,46 @@
                 padding-right: 12px !important;
                 box-shadow: none !important;
             }
-            body.va-in-workspace #shared-exercise-card {
+            body.va-in-workspace #shared-exercise-card,
+            body.va-in-topic-practice #shared-exercise-card {
                 border-radius: 0 !important;
                 border-left: none !important;
                 border-right: none !important;
                 box-shadow: none !important;
             }
-            body.va-in-workspace #shared-exercise-card > .va-ex-topbar {
+            body.va-in-workspace #shared-exercise-card > .va-ex-topbar,
+            body.va-in-topic-practice #shared-exercise-card > .va-ex-topbar {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
                 padding-top: 10px !important;
                 padding-bottom: 10px !important;
             }
-            body.va-in-workspace #shared-exercise-card > .va-ex-body {
+            body.va-in-workspace #shared-exercise-card > .va-ex-body,
+            body.va-in-topic-practice #shared-exercise-card > .va-ex-body {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
                 padding-top: 14px !important;
                 padding-bottom: 18px !important;
             }
-            body.va-in-workspace .va-dialogue-box {
+            body.va-in-workspace .va-dialogue-box,
+            body.va-in-topic-practice .va-dialogue-box {
                 border-radius: 20px !important;
                 padding-left: 16px !important;
                 padding-right: 16px !important;
                 padding-top: 20px !important;
                 padding-bottom: 20px !important;
             }
-            body.va-in-workspace #user-translation {
+            body.va-in-workspace #user-translation,
+            body.va-in-topic-practice #user-translation {
                 border-radius: 18px !important;
                 padding: 14px !important;
             }
-            body.va-in-workspace #result-panel {
+            body.va-in-workspace #result-panel,
+            body.va-in-topic-practice #result-panel {
                 border-radius: 18px !important;
             }
-            body.va-in-workspace #result-details-body {
+            body.va-in-workspace #result-details-body,
+            body.va-in-topic-practice #result-details-body {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
             }
@@ -1381,7 +1398,5 @@
     <script src="./js/app_controller.js"></script>
     <script src="./js/vocab_module.js"></script>
     <script src="./js/gemini_assistant.js"></script>
-
-
 </body>
 </html>

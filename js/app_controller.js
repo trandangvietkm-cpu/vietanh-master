@@ -14,19 +14,23 @@
             viewNotebook.classList.add('hidden');
 
             if (tab === 'home') {
-                document.body.classList.remove('va-in-workspace');
+                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
                 viewHome.classList.remove('hidden');
                 renderHomeDashboard();
             } else if (tab === 'notebook') {
-                document.body.classList.remove('va-in-workspace');
+                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
                 viewNotebook.classList.remove('hidden');
                 renderNotebook();
             } else {
                 viewPractice.classList.remove('hidden');
                 if (state.practiceMode === 'structure' && state.selectedStructureId) {
                     document.body.classList.add('va-in-workspace');
-                } else {
+                    document.body.classList.remove('va-in-topic-practice');
+                } else if (state.practiceMode === 'topic') {
                     document.body.classList.remove('va-in-workspace');
+                    document.body.classList.add('va-in-topic-practice');
+                } else {
+                    document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
                 }
             }
         }
@@ -482,6 +486,7 @@
             }
 
             if (mode === 'structure') {
+                document.body.classList.remove('va-in-topic-practice');
                 structBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all";
                 topicBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all";
 
@@ -496,6 +501,7 @@
                 }
             } else {
                 document.body.classList.remove('va-in-workspace');
+                document.body.classList.add('va-in-topic-practice');
                 topicBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all";
                 structBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all";
 
