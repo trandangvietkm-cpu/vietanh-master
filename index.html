@@ -2,14 +2,14 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>ViệtAnh Master - Luyện Dịch Việt - Anh Thông Minh</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- CSS Modules (Tách riêng giao diện chung, máy tính và điện thoại) -->
@@ -17,6 +17,15 @@
     <link rel="stylesheet" href="./desktop.css" media="screen and (min-width: 769px)">
     <link rel="stylesheet" href="./mobile.css" media="screen and (max-width: 768px)">
     <style id="va-mobile-workspace-fullwidth">
+        /* Chống phóng to khi nháy đúp (Double-tap to Zoom) & chống tự zoom iOS Safari khi gõ */
+        html, body, button, a, input, select, textarea {
+            touch-action: manipulation;
+        }
+        @media (max-width: 768px) {
+            input[type="text"], input[type="search"], input[type="email"], input[type="password"], select, textarea {
+                font-size: 16px !important;
+            }
+        }
         /* Ẩn chân trang và các nhãn phụ (Trình độ, Thì, Thể câu, Bộ đếm) trên thanh đầu thẻ bài tập */
         .va-author-footer,
         #badge-level,
@@ -55,6 +64,10 @@
             }
             body.va-in-workspace #ws-top-bar,
             body.va-in-workspace #ws-theory-panel,
+            body.va-in-workspace #ws-dictation-panel,
+            body.va-in-topic-practice #ws-dictation-panel,
+            body.va-in-workspace #ws-audiodrill-panel,
+            body.va-in-topic-practice #ws-audiodrill-panel,
             body.va-in-topic-practice #checkpoint-mode-banner {
                 padding-left: 12px !important;
                 padding-right: 12px !important;
@@ -114,6 +127,31 @@
                 padding-left: 12px !important;
                 padding-right: 12px !important;
             }
+        }
+
+        /* Chữ ký viết tay & hiệu ứng mượt cho Pop-up Tâm sự tác giả */
+        .font-signature {
+            font-family: 'Caveat', cursive;
+        }
+        .va-author-backdrop {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
+        }
+        .va-author-backdrop.active {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .va-author-card {
+            transform: scale(0.95) translateY(10px);
+            opacity: 0;
+            transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+        }
+        .va-author-backdrop.active .va-author-card {
+            transform: scale(1) translateY(0);
+            opacity: 1;
         }
     </style>
 </head>
@@ -207,6 +245,12 @@
 
             <!-- Chỉ số Streak & XP + Chuyển Tab (Chỉ hiện Icon trên Mobile) -->
             <div class="flex items-center gap-1 sm:gap-2.5 shrink-0">
+                <!-- Nút Tìm bài học (Toàn màn hình) -->
+                <button id="nav-search-btn" type="button" onclick="openGlobalSearchModal()" class="w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center gap-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 transition-all" title="Tìm bài học">
+                    <i class="fa-solid fa-magnifying-glass text-indigo-500 text-sm"></i>
+                    <span class="hidden lg:inline">Tìm bài</span>
+                </button>
+
                 <!-- Nút Trang chủ -->
                 <button id="nav-home-btn" onclick="switchTab('home')" class="w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center gap-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 transition-all" title="Trang chủ">
                     <i class="fa-solid fa-house text-indigo-500 text-sm"></i>
@@ -234,8 +278,8 @@
                     <span id="notebook-badge" class="bg-indigo-600 text-white text-[10px] sm:text-[11px] font-bold px-1.5 py-0.2 rounded-full min-w-[18px] text-center">0</span>
                 </button>
 
-                <!-- Nút Hộp ôn tập (Spaced Repetition) -->
-                <button onclick="renderReviewBoxModal()" class="relative w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center gap-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 transition-all" title="Hộp ôn tập thông minh định kỳ 3 ngày">
+                <!-- Nút Hộp ôn tập (Spaced Repetition - Trang riêng) -->
+                <button id="nav-review-btn" onclick="switchTab('review')" class="relative w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center gap-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 transition-all" title="Hộp ôn tập thông minh định kỳ 3 ngày">
                     <i class="fa-solid fa-brain text-indigo-500 text-sm"></i>
                     <span class="hidden sm:inline">Hộp ôn tập</span>
                     <span id="review-badge-count" class="max-sm:absolute max-sm:-top-0.5 max-sm:-right-0.5 bg-rose-600 text-white text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.2 rounded-full min-w-[18px] text-center" style="display: none;">0</span>
@@ -333,7 +377,7 @@
         </div>
 
         <!-- Thẻ 3: Hộp ôn tập thông minh -->
-        <div onclick="renderReviewBoxModal()" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-400 transition-all flex items-center gap-3.5 cursor-pointer group">
+        <div onclick="switchTab('review')" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-400 transition-all flex items-center gap-3.5 cursor-pointer group">
             <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg shrink-0 group-hover:scale-105 transition-transform">
                 <i class="fa-solid fa-brain"></i>
             </div>
@@ -431,6 +475,18 @@
                     <!-- Render bằng JS -->
                 </div>
             </div>
+
+            <!-- Chân trang riêng của Trang chủ: Nút mở Pop-up Tâm sự tác giả -->
+            <footer id="home-author-footer" class="pt-4 mt-2 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                <div class="flex items-center gap-2 text-center sm:text-left">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500 hidden sm:inline-block"></span>
+                    <span>ViệtAnh Master — Xây dựng với niềm đam mê tự học tiếng Anh từ con số 0.</span>
+                </div>
+                <button type="button" onclick="toggleAuthorModal(true)" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-rose-50 to-amber-50 hover:from-rose-100 hover:to-amber-100 text-rose-700 border border-rose-200/80 font-bold text-xs shadow-2xs hover:shadow-xs transition-all active:scale-95 shrink-0">
+                    <span class="text-sm leading-none">💌</span>
+                    <span>Tâm sự tác giả | Author's Note</span>
+                </button>
+            </footer>
         </div>
 
         <!-- ==================== TAB 1: KHU VỰC LUYỆN TẬP ==================== -->
@@ -479,6 +535,12 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Thanh Tìm bài học nhanh (Chạm để mở giao diện Tìm kiếm toàn màn hình) -->
+                    <button type="button" onclick="openGlobalSearchModal()" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-white hover:bg-indigo-50/40 border border-slate-200/90 hover:border-indigo-300 shadow-2xs text-left transition-all group">
+                        <i class="fa-solid fa-magnifying-glass text-slate-400 group-hover:text-indigo-500 text-sm shrink-0"></i>
+                        <span class="text-sm text-slate-400 group-hover:text-slate-600 font-medium truncate">Tìm bài: chủ đề, ngữ pháp, từ vựng...</span>
+                    </button>
 
                     <!-- CHẾ ĐỘ XEM 1 (MẶC ĐỊNH): SƠ ĐỒ HỌC 8 CHẶNG A1–B1 (DẪN ĐƯỜNG MỀM • KIỂU A) -->
                     <div id="structure-roadmap-view" class="space-y-4">
@@ -533,15 +595,23 @@
                             </div>
                         </div>
 
-                        <!-- Cụm gạt 2 Tab nhỏ dạng viên thuốc: Lý thuyết (📖) | Phòng luyện dịch (⚡) -->
-                        <div id="ws-subtab-switcher" class="inline-flex items-center bg-slate-200/75 p-1 rounded-full border border-slate-200/90 shadow-inner shrink-0" role="tablist" aria-label="Chuyển giữa Lý thuyết và Luyện dịch">
-                            <button id="ws-tab-theory-btn" type="button" role="tab" aria-selected="false" onclick="switchWorkspaceSubTab('theory')" class="inline-flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-600 hover:text-indigo-700 transition-all" title="Lý thuyết & Khung xương ngữ pháp">
+                        <!-- Cụm gạt 3 Tab nhỏ dạng viên thuốc: Lý thuyết | Luyện dịch | Nghe chép -->
+                        <div id="ws-subtab-switcher" class="inline-flex items-center bg-slate-200/75 p-1 rounded-full border border-slate-200/90 shadow-inner shrink-0" role="tablist" aria-label="Chuyển giữa Lý thuyết, Luyện dịch và Nghe chép">
+                            <button id="ws-tab-theory-btn" type="button" role="tab" aria-selected="false" onclick="switchWorkspaceSubTab('theory')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-600 hover:text-indigo-700 transition-all" title="Lý thuyết & Khung xương ngữ pháp">
                                 <i class="fa-solid fa-book-open text-indigo-600 text-xs"></i>
                                 <span class="hidden sm:inline">Lý thuyết</span>
                             </button>
-                            <button id="ws-tab-practice-btn" type="button" role="tab" aria-selected="true" onclick="switchWorkspaceSubTab('practice')" class="inline-flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-white text-indigo-700 shadow-xs transition-all" title="Phòng luyện dịch">
+                            <button id="ws-tab-practice-btn" type="button" role="tab" aria-selected="true" onclick="switchWorkspaceSubTab('practice')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-white text-indigo-700 shadow-xs transition-all" title="Phòng luyện dịch">
                                 <i class="fa-solid fa-bolt text-amber-500 text-xs"></i>
                                 <span class="hidden sm:inline">Luyện dịch</span>
+                            </button>
+                            <button id="ws-tab-dictation-btn" type="button" role="tab" aria-selected="false" onclick="switchWorkspaceSubTab('dictation')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-600 hover:text-emerald-700 transition-all" title="Nghe chép chính tả (Bổ trợ)">
+                                <i class="fa-solid fa-pen-nib text-emerald-600 text-xs"></i>
+                                <span class="hidden sm:inline">Nghe chép</span>
+                            </button>
+                            <button id="ws-tab-audiodrill-btn" type="button" role="tab" aria-selected="false" onclick="switchWorkspaceSubTab('audiodrill')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-600 hover:text-indigo-700 transition-all" title="Luyện Nghe–Nói & Shadowing">
+                                <i class="fa-solid fa-headphones text-indigo-600 text-xs"></i>
+                                <span class="hidden sm:inline">Nghe–Nói</span>
                             </button>
                         </div>
                     </div>
@@ -655,9 +725,27 @@
                             <p id="checkpoint-banner-sub" class="text-xs text-amber-50">Trộn ngẫu nhiên câu từ các cấu trúc trong chặng để kiểm tra phản xạ tổng hợp.</p>
                         </div>
                     </div>
-                    <button type="button" onclick="exitStageCheckpointToRoadmap()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-white text-slate-900 hover:bg-amber-50 shadow-2xs transition-all">
-                        <i class="fa-solid fa-arrow-left mr-1"></i>Quay lại Sơ đồ học
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Cụm 3 Tab viên thuốc đồng bộ: Luyện dịch | Nghe chép | Nghe–Nói -->
+                        <div id="cp-subtab-switcher" class="inline-flex items-center bg-black/20 p-1 rounded-full border border-white/25 shrink-0" role="tablist" aria-label="Chuyển chế độ luyện tập trong Checkpoint">
+                            <button id="cp-tab-practice-btn" type="button" role="tab" aria-selected="true" onclick="switchTopicSubTab('practice')" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-white text-orange-700 shadow-xs transition-all" title="Luyện dịch">
+                                <i class="fa-solid fa-bolt text-amber-500 text-xs"></i>
+                                <span>Luyện dịch</span>
+                            </button>
+                            <button id="cp-tab-dictation-btn" type="button" role="tab" aria-selected="false" onclick="switchTopicSubTab('dictation')" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-white/90 hover:text-white hover:bg-white/10 transition-all" title="Nghe chép chính tả">
+                                <i class="fa-solid fa-pen-nib text-emerald-200 text-xs"></i>
+                                <span>Nghe chép</span>
+                            </button>
+                            <button id="cp-tab-audiodrill-btn" type="button" role="tab" aria-selected="false" onclick="switchTopicSubTab('audiodrill')" class="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-white/90 hover:text-white hover:bg-white/10 transition-all" title="Luyện Nghe–Nói & Shadowing">
+                                <i class="fa-solid fa-headphones text-amber-200 text-xs"></i>
+                                <span>Nghe–Nói</span>
+                            </button>
+                        </div>
+                        <button type="button" onclick="exitStageCheckpointToRoadmap()" class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-white/15 hover:bg-white/25 text-white border border-white/30 transition-all inline-flex items-center gap-1.5" title="Thoát Checkpoint và quay lại Sơ đồ học">
+                            <i class="fa-solid fa-arrow-left text-[11px]"></i>
+                            <span>Sơ đồ học</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Thanh công cụ gọn 1 dòng mở Popup Bộ lọc Chủ đề tự do -->
@@ -673,10 +761,27 @@
                             <span>Xóa lọc</span>
                         </button>
                     </div>
-                    <button type="button" onclick="shuffleTopicExercises()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 transition-all" title="Xáo trộn thứ tự các câu để luyện phản xạ tự nhiên">
-                        <i class="fa-solid fa-shuffle"></i>
-                        <span>Trộn câu mới</span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Cụm gạt 3 Tab: Luyện dịch | Nghe chép | Nghe–Nói cho Chủ đề tự do -->
+                        <div id="topic-subtab-switcher" class="inline-flex items-center bg-slate-200/75 p-1 rounded-full border border-slate-200/90 shadow-inner shrink-0" role="tablist" aria-label="Chuyển giữa Luyện dịch, Nghe chép và Nghe–Nói">
+                            <button id="topic-tab-practice-btn" type="button" role="tab" aria-selected="true" onclick="switchTopicSubTab('practice')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-extrabold bg-white text-indigo-700 shadow-xs transition-all" title="Luyện dịch">
+                                <i class="fa-solid fa-bolt text-amber-500 text-xs"></i>
+                                <span class="hidden sm:inline">Luyện dịch</span>
+                            </button>
+                            <button id="topic-tab-dictation-btn" type="button" role="tab" aria-selected="false" onclick="switchTopicSubTab('dictation')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold text-slate-600 hover:text-emerald-700 transition-all" title="Nghe chép chính tả">
+                                <i class="fa-solid fa-pen-nib text-emerald-600 text-xs"></i>
+                                <span class="hidden sm:inline">Nghe chép</span>
+                            </button>
+                            <button id="topic-tab-audiodrill-btn" type="button" role="tab" aria-selected="false" onclick="switchTopicSubTab('audiodrill')" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold text-slate-600 hover:text-indigo-700 transition-all" title="Luyện Nghe–Nói & Shadowing">
+                                <i class="fa-solid fa-headphones text-indigo-600 text-xs"></i>
+                                <span class="hidden sm:inline">Nghe–Nói</span>
+                            </button>
+                        </div>
+                        <button type="button" onclick="shuffleTopicExercises()" class="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 transition-all" title="Xáo trộn thứ tự các câu để luyện phản xạ tự nhiên">
+                            <i class="fa-solid fa-shuffle"></i>
+                            <span class="hidden sm:inline">Trộn câu mới</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -692,6 +797,108 @@
                     <span>Xem Sơ đồ học 8 Chặng</span>
                 </button>
             </div>
+
+                    <!-- TAB 3: NGHE CHÉP CHÍNH TẢ (GIAO DIỆN & CƠ CHẾ CHẤM RIÊNG BIỆT) -->
+                    <div id="ws-dictation-panel" class="hidden space-y-4">
+                        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden">
+                            <!-- Top bar của Nghe chép -->
+                            <div class="bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/50 px-5 sm:px-6 py-3.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm shrink-0">
+                                        <i class="fa-solid fa-pen-nib"></i>
+                                    </span>
+                                    <div>
+                                        <div class="text-xs sm:text-sm font-extrabold text-slate-900 leading-tight">
+                                            Nghe chép chính tả • <span id="dict-counter-text" class="text-emerald-700">Câu 1 / 15</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-500">Gõ chính xác 100% câu vừa nghe để mở khóa câu tiếp theo</p>
+                                    </div>
+                                </div>
+                                <span id="dict-done-badge" class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200/80">
+                                    Đã chép: 0/15
+                                </span>
+                            </div>
+
+                            <!-- Thanh tiến độ Nghe chép -->
+                            <div class="w-full h-1.5 bg-slate-100">
+                                <div id="dict-progress-bar" class="h-full bg-emerald-500 transition-all duration-300" style="width: 7%"></div>
+                            </div>
+
+                            <!-- Thân chính Nghe chép -->
+                            <div class="p-5 sm:p-7 space-y-5 bg-slate-50/35">
+                                <!-- Khối phát âm thanh trung tâm -->
+                                <div class="bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-5 text-center space-y-3">
+                                    <div class="flex flex-wrap items-center justify-center gap-2.5">
+                                        <button id="dict-play-btn" type="button" onclick="playDictationCurrentAudio()" class="inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all">
+                                            <i class="fa-solid fa-volume-high text-base"></i>
+                                            <span>Nghe câu này</span>
+                                        </button>
+                                        <button id="dict-speed-btn" type="button" onclick="cycleDictationSpeed()" class="inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl text-xs sm:text-sm font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all" title="Đổi tốc độ đọc">
+                                            <i class="fa-solid fa-gauge-simple-low"></i>
+                                            <span>Tốc độ: 0.85x</span>
+                                        </button>
+                                    </div>
+                                    <p class="text-[11px] text-slate-400">
+                                        Phím tắt: <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">F1</kbd> nghe lại • <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded font-mono text-[10px]">Enter</kbd> kiểm tra / sang câu tiếp
+                                    </p>
+                                </div>
+
+                                <!-- Hộp phản hồi từng từ (Strict Match: Xanh = Đúng, ____ = Chưa đúng/Thiếu) -->
+                                <div id="dict-feedback-box" class="hidden rounded-2xl border p-4 space-y-2.5 transition-all">
+                                    <!-- Render bằng JS -->
+                                </div>
+
+                                <!-- Hộp Xem đáp án (Vẫn yêu cầu tự gõ lại để mở khóa Câu tiếp theo) -->
+                                <div id="dict-peek-box" class="hidden rounded-2xl border border-amber-200 bg-amber-50/80 p-4 space-y-1">
+                                    <div class="flex items-center justify-between text-[11px] font-extrabold text-amber-800">
+                                        <span><i class="fa-regular fa-eye mr-1"></i>Đáp án đối chiếu</span>
+                                        <span class="font-semibold text-amber-700">Hãy tự gõ lại để mở khóa câu tiếp</span>
+                                    </div>
+                                    <p id="dict-peek-en" class="text-sm sm:text-base font-extrabold text-slate-900 select-none"></p>
+                                    <p id="dict-peek-vi" class="text-xs text-slate-600 italic"></p>
+                                </div>
+
+                                <!-- Ô nhập chính tả -->
+                                <div class="space-y-2">
+                                    <label for="dict-input" class="block text-xs font-bold text-slate-500 px-1">Gõ lại chính xác câu tiếng Anh bạn vừa nghe:</label>
+                                    <textarea id="dict-input" rows="2" autocomplete="off" spellcheck="false" placeholder="Nghe âm thanh và gõ lại từng từ tại đây..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-200/90 shadow-inner focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 text-base sm:text-lg font-medium text-slate-800 placeholder:text-slate-400 transition-all resize-none outline-none"></textarea>
+                                </div>
+
+                                <!-- Hàng nút điều khiển Nghe chép -->
+                                <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <button type="button" onclick="stepDictationPrev()" class="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 transition-all" title="Quay lại câu trước">
+                                            <i class="fa-solid fa-chevron-left"></i>
+                                        </button>
+                                        <button id="dict-hint-word-btn" type="button" onclick="revealNextDictationHintWord()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 transition-all">
+                                            <i class="fa-solid fa-lightbulb text-amber-500"></i>
+                                            <span>Gợi ý 1 từ</span>
+                                        </button>
+                                        <button id="dict-peek-btn" type="button" onclick="toggleDictationPeekAnswer()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 transition-all">
+                                            <i class="fa-regular fa-eye text-slate-500"></i>
+                                            <span>Xem đáp án</span>
+                                        </button>
+                                    </div>
+
+                                    <div class="flex items-center gap-2 flex-1 sm:flex-none justify-end">
+                                        <button id="dict-check-btn" type="button" onclick="checkDictationInput()" class="flex-1 sm:flex-none px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-all">
+                                            Kiểm tra
+                                        </button>
+                                        <button id="dict-next-btn" type="button" onclick="goNextDictationQuestion()" disabled class="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-slate-200 text-slate-400 cursor-not-allowed transition-all" title="Cần gõ đúng 100% câu hiện tại để mở khóa">
+                                            <i id="dict-next-icon" class="fa-solid fa-lock text-xs"></i>
+                                            <span>Câu tiếp</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <!-- TAB 4: NGHE–NÓI & SHADOWING (DÙNG CHUNG LÕI AUDIO DRILL) -->
+                    <div id="ws-audiodrill-panel" class="hidden space-y-4">
+                        <!-- Lõi trình phát Audio Drill được mount trực tiếp vào đây -->
+                    </div>
 
             <!-- ==================== THẺ BÀI TẬP DỊCH CÂU DÙNG CHUNG ==================== -->
             <div id="shared-exercise-card" class="hidden bg-white rounded-3xl border border-slate-200/90 shadow-md overflow-hidden transition-all">
@@ -1011,6 +1218,57 @@
             </div>
         </div>
 
+
+        <!-- ==================== TAB 3: HỘP ÔN TẬP THÔNG MINH (TRANG RIÊNG) ==================== -->
+        <div id="view-review" class="hidden space-y-5">
+            <!-- Header trang Hộp ôn tập -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl shrink-0">
+                        <i class="fa-solid fa-brain"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-900">Hộp Ôn Tập Thông Minh</h2>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Tự động nhắc lại các câu bạn từng làm chưa tốt theo chu kỳ lặp lại ngắt quãng 3 ngày.</p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 shrink-0">
+                    <button id="review-page-audio-btn" type="button" onclick="openAudioDrillForReviewBox()" class="hidden inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all">
+                        <i class="fa-solid fa-headphones"></i>
+                        <span>Nghe–Nói tất cả</span>
+                    </button>
+                    <button type="button" onclick="switchTab('practice')" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm">
+                        <i class="fa-solid fa-arrow-left"></i>
+                        <span>Quay lại luyện dịch</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Thanh lọc trạng thái Hộp ôn tập -->
+            <div id="review-filter-bar" class="flex flex-wrap items-center gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+                <button id="review-filter-all" type="button" onclick="setReviewPageFilter('all')" class="px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-slate-900 text-white transition-all">Tất cả (0)</button>
+                <button id="review-filter-due" type="button" onclick="setReviewPageFilter('due')" class="px-3.5 py-1.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all">Đến hạn hôm nay (0)</button>
+                <button id="review-filter-upcoming" type="button" onclick="setReviewPageFilter('upcoming')" class="px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-all">Chưa tới hạn (0)</button>
+            </div>
+
+            <!-- Lưới thẻ câu cần ôn tập (2 cột PC / 1 cột Mobile) -->
+            <div id="review-page-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Render bằng JS -->
+            </div>
+
+            <!-- Trạng thái trống -->
+            <div id="review-page-empty" class="hidden bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3">
+                <div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-circle-check"></i>
+                </div>
+                <h3 class="font-bold text-slate-800 text-lg">Hộp ôn tập đang trống!</h3>
+                <p class="text-sm text-slate-500 max-w-md mx-auto">Tuyệt vời! Bạn không có câu nào bị làm sai hoặc đến hạn ôn tập định kỳ.</p>
+                <button type="button" onclick="switchTab('practice')" class="mt-2 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 transition-all">
+                    Tiếp tục luyện dịch ngay
+                </button>
+            </div>
+        </div>
+
     </main>
 
 
@@ -1123,7 +1381,7 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div class="hidden">
                         <label for="struct-search-input" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                             <i class="fa-solid fa-magnifying-glass mr-1 text-emerald-500"></i>3. Tìm nhanh từ khóa
                         </label>
@@ -1248,7 +1506,7 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div class="hidden">
                         <label for="topic-search-input" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
                             <i class="fa-solid fa-magnifying-glass mr-1 text-emerald-500"></i>3. Tìm nhanh từ khóa
                         </label>
@@ -1351,62 +1609,105 @@
         </div>
     </div>
 
-    <!-- ================= BẮT ĐẦU: TÂM SỰ TÁC GIẢ (FOOTER + MODAL) ================= -->
-<footer class="va-author-footer">
-  <div>ViệtAnh Master — Rèn luyện phản xạ dịch Tiếng Anh mỗi ngày</div>
-  <button type="button" class="va-author-footer-btn" onclick="toggleAuthorModal(true)">
-    <span>💌</span> Tâm sự tác giả | Author's Note
-  </button>
-</footer>
-
-<!-- Cửa sổ Pop-up Tâm sự tác giả -->
-<div id="vaAuthorModal" class="va-author-modal-overlay" onclick="if(event.target === this) toggleAuthorModal(false)">
-  <div class="va-author-modal-box">
-    <div class="va-author-modal-header">
-      <h3 class="va-author-modal-title">
-        <span>💌</span> Tâm sự tác giả | Author's Note
-      </h3>
-      <button type="button" class="va-author-close-btn" onclick="toggleAuthorModal(false)" title="Đóng">✕</button>
-    </div>
-
-    <div class="va-author-modal-body">
-      <div class="va-author-slogan">
-        "Không bao giờ là quá muộn để bắt đầu !"<br>
-        <span style="font-size: 13.5px; color: #64748b;">"It is never too late to start !"</span>
-      </div>
-
-      <!-- Bản Tiếng Việt -->
-      <div class="va-author-lang-block">
-        <div class="va-author-lang-tag">🇻🇳 Tiếng Việt</div>
-        <p style="margin: 0;">
-          Xuất phát là một người học tiếng Anh từ con số 0 khi đã trưởng thành, tôi tạo nên ứng dụng này từ chính những trăn trở và niềm đam mê của mình. Tiếng Anh không chỉ giúp chúng ta kết nối với thế giới, mà còn là hành trình phát triển bản thân và mở mang tri thức. Hy vọng ứng dụng sẽ là người bạn đồng hành hữu ích của bạn trên con đường chinh phục ngôn ngữ này.
-        </p>
-        <div class="va-author-sign">
-          — Từ một người bạn đồng hành cùng bạn chinh phục tiếng Anh, <strong>Vincent (Việt Trần)</strong> —
+    <!-- ================= POP-UP TÂM SỰ TÁC GIẢ (CHỈ MỞ TỪ CHÂN TRANG CHỦ) ================= -->
+<div id="vaAuthorModal" class="va-author-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onclick="if(event.target === this) toggleAuthorModal(false)">
+    <div class="va-author-card bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col">
+        <!-- Header Pop-up -->
+        <div class="bg-gradient-to-r from-indigo-600 via-indigo-700 to-blue-700 px-5 sm:px-6 py-4 sm:py-5 text-white shrink-0">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center text-2xl shadow-inner border border-white/20 shrink-0">
+                        💌
+                    </div>
+                    <div>
+                        <h3 class="text-base sm:text-xl font-bold tracking-tight flex flex-wrap items-center gap-1.5">
+                            <span>Tâm sự tác giả</span>
+                            <span class="text-indigo-200 font-normal text-xs sm:text-sm">| Author's Note</span>
+                        </h3>
+                        <p class="text-xs text-indigo-100/90 mt-0.5">
+                            Chia sẻ từ hành trình tự học tiếng Anh từ con số 0
+                        </p>
+                    </div>
+                </div>
+                <button type="button" onclick="toggleAuthorModal(false)" class="w-9 h-9 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white transition shrink-0" title="Đóng (Esc)">
+                    ✕
+                </button>
+            </div>
         </div>
-      </div>
 
-      <!-- Bản Tiếng Anh -->
-      <div class="va-author-lang-block en" style="margin-bottom: 0;">
-        <div class="va-author-lang-tag">🇬🇧 English</div>
-        <p style="margin: 0; font-style: italic; color: #475569;">
-          Starting my English journey from scratch later in life, I built this app out of my own struggles and passion for learning. English is more than just a tool to connect with the world—it is a pathway to personal growth and new horizons of knowledge. I hope this space becomes a helpful companion on your journey to mastering the language.
-        </p>
-        <div class="va-author-sign">
-          — From a fellow learner walking this path with you, <strong>Vincent (Viet Tran)</strong> —
+        <!-- Nội dung cuộn được -->
+        <div class="p-5 sm:p-7 overflow-y-auto space-y-5">
+            <!-- Slogan mở đầu -->
+            <div class="bg-gradient-to-r from-amber-50 via-orange-50/70 to-rose-50 border border-amber-200/80 rounded-2xl p-4 text-center shadow-2xs">
+                <p class="text-amber-950 font-semibold text-sm sm:text-base italic">
+                    "Không bao giờ là quá muộn để bắt đầu!"
+                </p>
+                <p class="text-amber-800/80 text-xs sm:text-sm italic mt-0.5">
+                    "It is never too late to start!"
+                </p>
+            </div>
+
+            <!-- Khối Tiếng Việt -->
+            <div class="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-4 sm:p-5">
+                <div class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200/60 px-2.5 py-1 rounded-lg mb-3">
+                    <span>🇻🇳</span> Tiếng Việt
+                </div>
+                <p class="text-slate-700 text-sm sm:text-[15px] leading-relaxed text-justify">
+                    Xuất phát là một người học tiếng Anh từ con số 0 khi đã trưởng thành, tôi tạo nên ứng dụng này từ chính những trăn trở và niềm đam mê của mình. Tiếng Anh không chỉ giúp chúng ta kết nối với thế giới, mà còn là hành trình phát triển bản thân và mở mang tri thức. Hy vọng ứng dụng sẽ là người bạn đồng hành hữu ích của bạn trên con đường chinh phục ngôn ngữ này.
+                </p>
+                <div class="mt-4 pt-3 border-t border-slate-200/70 text-right">
+                    <p class="text-xs sm:text-sm text-slate-600 italic">
+                        — Từ một người bạn đồng hành cùng bạn chinh phục tiếng Anh,
+                    </p>
+                    <p class="font-signature text-2xl sm:text-3xl text-indigo-700 mt-0.5">
+                        Vincent (Việt Trần)
+                    </p>
+                </div>
+            </div>
+
+            <!-- Khối Tiếng Anh -->
+            <div class="bg-indigo-50/40 border border-indigo-100 rounded-2xl p-4 sm:p-5">
+                <div class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/80 border border-indigo-200/60 px-2.5 py-1 rounded-lg mb-3">
+                    <span>🇬🇧</span> English
+                </div>
+                <p class="text-slate-700 text-sm sm:text-[15px] leading-relaxed italic text-justify">
+                    "Starting my English journey from scratch later in life, I built this app out of my own struggles and passion for learning. English is more than just a tool to connect with the world—it is a pathway to personal growth and new horizons of knowledge. I hope this space becomes a helpful companion on your journey to mastering the language."
+                </p>
+                <div class="mt-4 pt-3 border-t border-indigo-100 text-right">
+                    <p class="text-xs sm:text-sm text-slate-600 italic">
+                        — From a fellow learner walking this path with you,
+                    </p>
+                    <p class="font-signature text-2xl sm:text-3xl text-indigo-700 mt-0.5">
+                        Vincent (Viet Tran)
+                    </p>
+                </div>
+            </div>
         </div>
-      </div>
+
+        <!-- Chân Pop-up -->
+        <div class="px-5 sm:px-6 py-3.5 sm:py-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            <span class="text-xs text-slate-500 flex items-center gap-1.5">
+                <span>🌱</span> Mỗi ngày dịch 5 câu là bạn đã tiến bộ hơn hôm qua!
+            </span>
+            <button type="button" onclick="toggleAuthorModal(false)" class="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs sm:text-sm shadow-sm transition active:scale-95">
+                Tiếp tục luyện tập 💪
+            </button>
+        </div>
     </div>
-  </div>
 </div>
 
 
-    <!-- ==================== KHO DỮ LIỆU & CÁC MODULE JAVASCRIPT ==================== -->
-    <script src="./questions_data.js"></script>
-    <script src="./vocab_data.js"></script>
+    <!-- ==================== TẦNG DỮ LIỆU PHÂN TÁCH THEO CHẶNG (DATA LAYER) ==================== -->
+    <script src="./data/data_registry.js"></script>
+    <script src="./data/stage_1.js"></script>
+    <!-- Khi soạn thêm Chặng 2..8, chỉ cần thêm 1 dòng: <script src="./data/stage_2.js"></script> -->
     <script src="./js/storage_manager.js"></script>
+    <script src="./js/audio_engine.js"></script>
     <script src="./js/ai_evaluator.js"></script>
+    <script src="./js/dashboard_roadmap.js"></script>
     <script src="./js/app_controller.js"></script>
+    <script src="./js/modals_search.js"></script>
+    <script src="./js/audio_drill.js"></script>
     <script src="./js/vocab_module.js"></script>
     <script src="./js/gemini_assistant.js"></script>
 </body>
