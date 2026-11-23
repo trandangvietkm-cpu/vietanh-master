@@ -39,4 +39,227 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+/* Chế độ tập trung (Focus Mode): Ẩn Header & thanh chọn chế độ khi vào Phòng luyện (PC + Mobile) */
+body.va-in-workspace > header,
+body.va-in-topic-practice > header,
+body.va-in-workspace #practice-mode-switcher-bar,
+body.va-in-topic-practice #practice-mode-switcher-bar {
+  display: none !important;
+}
+
+/* Cân chỉnh khoảng đệm phía trên khi Header đã ẩn */
+body.va-in-workspace main,
+body.va-in-topic-practice main {
+  padding-top: 1rem;
+}
+/* ================= BOTTOM NAV & BOTTOM SHEET (MOBILE NATIVE) ================= */
+#va-mobile-bottom-nav {
+  display: none;
+}
+
+.va-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9980;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+.va-sheet-backdrop.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.va-sheet-panel {
+  width: 100%;
+  max-width: 520px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 24px 24px 0 0;
+  padding: 12px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.2);
+  transform: translateY(100%);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.va-sheet-backdrop.active .va-sheet-panel {
+  transform: translateY(0);
+}
+.va-sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  margin: 0 auto 12px;
+}
+.va-sheet-tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+.va-sheet-tile:active {
+  transform: scale(0.97);
+}
+
+/* ================= CHẾ ĐỘ TỐI (DARK MODE • html.va-dark) ================= */
+html.va-dark body {
+  background-color: #0b1120 !important;
+  color: #e2e8f0 !important;
+}
+html.va-dark header,
+html.va-dark .va-sheet-panel,
+html.va-dark #va-mobile-bottom-nav,
+html.va-dark #floating-action-dock {
+  background-color: #111827 !important;
+  border-color: #1f2937 !important;
+}
+html.va-dark .bg-white,
+html.va-dark .bg-white\/95,
+html.va-dark .bg-white\/90,
+html.va-dark .bg-white\/70 {
+  background-color: #131c2e !important;
+}
+html.va-dark .bg-slate-50,
+html.va-dark .bg-slate-50\/90,
+html.va-dark .bg-slate-50\/80,
+html.va-dark .bg-slate-50\/70,
+html.va-dark .bg-slate-50\/40,
+html.va-dark .bg-slate-50\/35,
+html.va-dark .bg-slate-100,
+html.va-dark .bg-slate-200\/75,
+html.va-dark .va-sheet-tile {
+  background-color: #1e293b !important;
+}
+html.va-dark .bg-indigo-50,
+html.va-dark .bg-indigo-50\/90,
+html.va-dark .bg-indigo-50\/80,
+html.va-dark .bg-indigo-50\/70,
+html.va-dark .bg-indigo-50\/40,
+html.va-dark .bg-indigo-50\/35,
+html.va-dark .bg-indigo-50\/30,
+html.va-dark .bg-blue-50,
+html.va-dark .bg-sky-50 {
+  background-color: rgba(79, 70, 229, 0.16) !important;
+}
+html.va-dark .bg-emerald-50,
+html.va-dark .bg-emerald-50\/90,
+html.va-dark .bg-emerald-50\/70,
+html.va-dark .bg-emerald-50\/40,
+html.va-dark .bg-emerald-50\/35,
+html.va-dark .bg-emerald-50\/20,
+html.va-dark .bg-emerald-50\/15 {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+html.va-dark .bg-amber-50,
+html.va-dark .bg-amber-50\/80,
+html.va-dark .bg-amber-50\/70,
+html.va-dark .bg-orange-50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+html.va-dark .bg-rose-50,
+html.va-dark .bg-rose-50\/70,
+html.va-dark .bg-rose-100\/90 {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+}
+html.va-dark .bg-purple-50,
+html.va-dark .bg-purple-50\/50 {
+  background-color: rgba(168, 85, 247, 0.15) !important;
+}
+html.va-dark .from-indigo-50\/80,
+html.va-dark .from-emerald-50\/90,
+html.va-dark .from-emerald-50\/80,
+html.va-dark .from-amber-50\/80,
+html.va-dark .from-amber-50\/60,
+html.va-dark .from-amber-50,
+html.va-dark .from-rose-50\/90,
+html.va-dark .from-rose-50 {
+  background-image: none !important;
+  background-color: #172033 !important;
+}
+html.va-dark .text-slate-900,
+html.va-dark .text-slate-800,
+html.va-dark .text-indigo-950,
+html.va-dark .text-amber-950 {
+  color: #f1f5f9 !important;
+}
+html.va-dark .text-slate-700,
+html.va-dark .va-sheet-tile {
+  color: #e2e8f0 !important;
+}
+html.va-dark .text-slate-600,
+html.va-dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+html.va-dark .text-indigo-900,
+html.va-dark .text-indigo-800,
+html.va-dark .text-indigo-700,
+html.va-dark .text-indigo-600 {
+  color: #a5b4fc !important;
+}
+html.va-dark .text-emerald-900,
+html.va-dark .text-emerald-800,
+html.va-dark .text-emerald-700 {
+  color: #6ee7b7 !important;
+}
+html.va-dark .text-amber-900,
+html.va-dark .text-amber-800,
+html.va-dark .text-amber-700,
+html.va-dark .text-orange-700 {
+  color: #fcd34d !important;
+}
+html.va-dark .text-rose-900,
+html.va-dark .text-rose-700 {
+  color: #fda4af !important;
+}
+html.va-dark .border-slate-100,
+html.va-dark .border-slate-200,
+html.va-dark .border-slate-200\/90,
+html.va-dark .border-slate-200\/80,
+html.va-dark .border-slate-300,
+html.va-dark .va-sheet-tile {
+  border-color: #273549 !important;
+}
+html.va-dark .border-indigo-200,
+html.va-dark .border-indigo-200\/80,
+html.va-dark .border-indigo-100 {
+  border-color: rgba(99, 102, 241, 0.35) !important;
+}
+html.va-dark .border-emerald-200,
+html.va-dark .border-emerald-300 {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+html.va-dark .border-amber-200,
+html.va-dark .border-orange-200\/70 {
+  border-color: rgba(245, 158, 11, 0.35) !important;
+}
+html.va-dark .border-rose-200 {
+  border-color: rgba(244, 63, 94, 0.35) !important;
+}
+html.va-dark input,
+html.va-dark textarea,
+html.va-dark select {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+html.va-dark kbd {
+  background-color: #1e293b !important;
+  border-color: #475569 !important;
+  color: #cbd5e1 !important;
+}
 

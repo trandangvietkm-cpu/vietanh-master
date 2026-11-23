@@ -387,12 +387,104 @@ function renderStationVocabInTheory(struct) {
         `;
     }).join('');
 }
-
-
-// ==================== GIAO DIỆN TÌM BÀI HỌC TOÀN MÀN HÌNH (CHUẨN MOBILE, KHÔNG BỊ ZOOM) ====================
+// ==================== GIAO DIỆN TÌM BÀI HỌC & TRA TỪ ĐIỂN 2 CHIỀU (ANH-VIỆT / VIỆT-ANH) ====================
 const GLOBAL_SEARCH_SUGGESTIONS = [
-    'To be', 'Gia đình', 'Du lịch', 'Have / Has', 'There is', 'Công sở', 'Sở hữu', 'Bác sĩ'
+    'opportunity', 'cơ hội', 'To be', 'Gia đình', 'Du lịch', 'Have / Has', 'accommodation', 'Công sở'
 ];
+
+// Tra từ điển 2 chiều siêu tốc (1ms) trong kho 3.293 từ window.VA_DICTIONARY_CORE
+function searchCoreDictionary(rawQuery) {
+    if (typeof window.VA_DICTIONARY_CORE !== 'object' || !window.VA_DICTIONARY_CORE) return [];
+    const q = String(rawQuery || '').trim();
+    if (q.length < 2) return [];
+
+    const qLower = q.toLowerCase();
+    const qNorm = typeof removeVietnameseTones === 'function' ? removeVietnameseTones(q) : qLower;
+    const results = [];
+
+    for (const [word, entry] of Object.entries(window.VA_DICTIONARY_CORE)) {
+        if (!entry) continue;
+        const wLower = word.toLowerCase();
+        const viLower = String(entry.vi || '').toLowerCase();
+        const viNorm = typeof removeVietnameseTones === 'function' ? removeVietnameseTones(viLower) : viLower;
+
+        let score = 0;
+        // Chiều 1: Tra Anh -> Việt
+        if (wLower === qLower) score = 100;
+        else if (wLower.startsWith(qLower)) score = 80;
+        else if (wLower.includes(qLower) && qLower.length >= 3) score = 50;
+
+        // Chiều 2: Tra ngược Việt -> Anh (có dấu hoặc không dấu)
+        if (score === 0) {
+            if (viLower === qLower || viNorm === qNorm) score = 90;
+            else if (viLower.includes(qLower)) score = 70;
+            else if (viNorm.includes(qNorm) && qNorm.length >= 2) score = 60;
+        }
+
+        if (score > 0) {
+            results.push({ word, entry, score });
+        }
+    }
+
+    results.sort((a, b) => b.score - a.score || a.word.length - b.word.length);
+    return results.slice(0, 8);
+}
+
+function speakDictSearchWord(encodedWord, btnEl) {
+    const word = decodeURIComponent(encodedWord || '').trim();
+    if (word && typeof speakText === 'function') {
+        speakText(word, btnEl, 0.9);
+    }
+}
+
+function saveDictSearchWord(encodedWord, btnEl) {
+    const word = decodeURIComponent(encodedWord || '').trim();
+    if (!word) return;
+    const entry = (window.VA_DICTIONARY_CORE && window.VA_DICTIONARY_CORE[word.toLowerCase()]) || null;
+    if (!entry) return;
+
+    let list = [];
+    try {
+        list = JSON.parse(localStorage.getItem('va_vocab_bank')) || [];
+    } catch (e) {}
+
+    if (list.some(v => String(v.en || '').toLowerCase() === word.toLowerCase())) {
+        if (typeof showToast === 'function') showToast(`Từ "${word}" đã có sẵn trong Sổ tay!`, 'info');
+        return;
+    }
+
+    list.unshift({
+        id: 'voc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        en: word,
+        vi: entry.vi || '',
+        ipa: entry.ipa || '',
+        pos: entry.pos || '',
+        level: entry.level || 'B1',
+        emoji: '📖',
+        imageUrl: '',
+        topic: 'Từ điển Oxford',
+        exampleEn: entry.example || '',
+        exampleVi: '',
+        mastered: false,
+        foreverMastered: false,
+        reviewStage: 0,
+        nextReviewDue: null,
+        addedAt: new Date().toISOString()
+    });
+
+    localStorage.setItem('va_vocab_bank', JSON.stringify(list));
+    if (typeof addXP === 'function') addXP(2);
+    if (typeof window.updateNotebookBadge === 'function') window.updateNotebookBadge();
+
+    if (btnEl) {
+        btnEl.className = 'px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs inline-flex items-center gap-1 shrink-0';
+        btnEl.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i><span>Đã lưu</span>';
+        btnEl.onclick = null;
+    }
+    if (typeof showToast === 'function') {
+        showToast(`✨ Đã lưu "${word}" vào Sổ tay từ vựng (+2 XP)!`, 'success');
+    }
+}
 
 function openGlobalSearchModal() {
     closeGlobalSearchModal();
@@ -410,7 +502,7 @@ function openGlobalSearchModal() {
                 <span class="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-blue-500 text-white flex items-center justify-center text-xs">
                     <i class="fa-solid fa-language"></i>
                 </span>
-                <span>Tìm bài học</span>
+                <span>Tìm bài & Tra từ điển</span>
             </div>
             <button type="button" onclick="closeGlobalSearchModal()" class="px-3 py-1.5 rounded-xl text-xs font-extrabold text-indigo-600 hover:bg-indigo-50 transition-all">
                 Đóng
@@ -421,16 +513,16 @@ function openGlobalSearchModal() {
         <div class="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
             <div class="max-w-xl mx-auto space-y-5">
                 <div class="space-y-1.5">
-                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Tìm bài học</h2>
+                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Tìm bài học & Tra từ điển</h2>
                     <p class="text-xs sm:text-sm text-slate-500 leading-relaxed">
-                        Gõ chủ đề, điểm ngữ pháp, một từ hoặc một câu — tiếng Việt hay tiếng Anh, có dấu hay không dấu đều được.
+                        Tra nghĩa nhanh <strong>Anh–Việt / Việt–Anh</strong> (kho 3.293 từ offline) hoặc tìm bài học, ngữ pháp bất kỳ.
                     </p>
                 </div>
 
                 <!-- Ô nhập 16px chuẩn chống tự zoom trên iPhone -->
                 <div class="relative">
                     <i class="fa-solid fa-magnifying-glass text-indigo-500 absolute left-4 top-1/2 -translate-y-1/2 text-base pointer-events-none"></i>
-                    <input id="va-global-search-input" type="search" autocomplete="off" oninput="handleGlobalSearchInput(this.value)" placeholder="Ví dụ: To be, gia đình, du lịch, hello..." class="w-full pl-11 pr-11 py-3.5 rounded-2xl bg-white border-2 border-indigo-400/80 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/15 text-base font-medium text-slate-900 placeholder:text-slate-400 shadow-xs outline-none transition-all">
+                    <input id="va-global-search-input" type="search" autocomplete="off" oninput="handleGlobalSearchInput(this.value)" placeholder="Tra từ (opportunity, cơ hội...) hoặc tìm bài (To be, gia đình)..." class="w-full pl-11 pr-11 py-3.5 rounded-2xl bg-white border-2 border-indigo-400/80 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/15 text-base font-medium text-slate-900 placeholder:text-slate-400 shadow-xs outline-none transition-all">
                     <button id="va-global-search-clear" type="button" onclick="clearGlobalSearchInput()" class="hidden absolute right-3.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all">
                         <i class="fa-solid fa-xmark text-xs"></i>
                     </button>
@@ -438,7 +530,7 @@ function openGlobalSearchModal() {
 
                 <!-- Thẻ Gợi ý 1 chạm -->
                 <div id="va-global-search-suggestions" class="space-y-2.5">
-                    <p class="text-xs font-bold text-slate-500">Gợi ý</p>
+                    <p class="text-xs font-bold text-slate-500">Gợi ý nhanh</p>
                     <div class="flex flex-wrap gap-2">
                         ${GLOBAL_SEARCH_SUGGESTIONS.map(tag => `
                             <button type="button" onclick="pickGlobalSearchSuggestion('${tag.replace(/'/g, "\\'")}')" class="px-3.5 py-2 rounded-full bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-300 text-xs sm:text-sm font-semibold shadow-2xs transition-all">
@@ -519,6 +611,10 @@ function handleGlobalSearchInput(rawQuery) {
     const qNorm = typeof removeVietnameseTones === 'function' ? removeVietnameseTones(q) : q.toLowerCase();
     const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    // 1. Tra cứu Từ điển 2 chiều
+    const matchedDict = searchCoreDictionary(q);
+
+    // 2. Tìm Trạm ngữ pháp & Câu tình huống
     const matchedStructs = [];
     const matchedSits = [];
 
@@ -536,12 +632,12 @@ function handleGlobalSearchInput(rawQuery) {
         });
     });
 
-    if (matchedStructs.length === 0 && matchedSits.length === 0) {
+    if (matchedDict.length === 0 && matchedStructs.length === 0 && matchedSits.length === 0) {
         resBox.innerHTML = `
             <div class="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-2">
                 <i class="fa-solid fa-magnifying-glass text-slate-300 text-2xl"></i>
-                <p class="text-sm font-bold text-slate-700">Không tìm thấy bài học nào cho "${esc(q)}"</p>
-                <p class="text-xs text-slate-500">Thử gõ từ khóa ngắn hơn như "To be", "gia đình", "du lịch", "have"...</p>
+                <p class="text-sm font-bold text-slate-700">Không tìm thấy từ vựng hay bài học nào cho "${esc(q)}"</p>
+                <p class="text-xs text-slate-500">Thử gõ từ khóa khác như "opportunity", "cơ hội", "To be", "gia đình"...</p>
             </div>
         `;
         return;
@@ -549,8 +645,50 @@ function handleGlobalSearchInput(rawQuery) {
 
     let html = '';
 
+    // KHỐI 1: KẾT QUẢ TỪ ĐIỂN 2 CHIỀU
+    if (matchedDict.length > 0) {
+        let savedSet = new Set();
+        try {
+            const savedBank = JSON.parse(localStorage.getItem('va_vocab_bank')) || [];
+            savedSet = new Set(savedBank.map(v => String(v.en || '').trim().toLowerCase()));
+        } catch (e) {}
+
+        html += `<p class="text-xs font-extrabold uppercase tracking-wider text-indigo-500 flex items-center gap-1.5"><i class="fa-solid fa-book-open"></i> Từ điển nhanh (${matchedDict.length})</p>`;
+        html += matchedDict.map(({ word, entry }) => {
+            const encoded = encodeURIComponent(word);
+            const isSaved = savedSet.has(word.toLowerCase());
+            const saveBtn = isSaved
+                ? `<span class="px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs inline-flex items-center gap-1 shrink-0"><i class="fa-solid fa-check text-[10px]"></i>Đã lưu</span>`
+                : `<button type="button" onclick="saveDictSearchWord('${encoded}', this)" class="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-indigo-600 text-amber-800 hover:text-white border border-amber-200 hover:border-indigo-600 font-bold text-xs inline-flex items-center gap-1 shrink-0 transition-all"><i class="fa-solid fa-plus text-[10px]"></i>Lưu từ</button>`;
+
+            return `
+                <div class="bg-white rounded-2xl border border-indigo-100 hover:border-indigo-300 p-4 shadow-2xs transition-all space-y-2">
+                    <div class="flex items-start justify-between gap-2.5">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-base sm:text-lg font-extrabold text-indigo-950">${esc(word)}</span>
+                                ${entry.pos ? `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600">${esc(entry.pos)}</span>` : ''}
+                                ${entry.level ? `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-50 text-indigo-700">${esc(entry.level)}</span>` : ''}
+                            </div>
+                            ${entry.ipa ? `<p class="font-mono text-xs text-indigo-500 mt-0.5">${esc(entry.ipa)}</p>` : ''}
+                            <p class="text-sm font-bold text-emerald-700 mt-1">${esc(entry.vi)}</p>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button type="button" onclick="speakDictSearchWord('${encoded}', this)" class="w-8 h-8 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe phát âm">
+                                <i class="fa-solid fa-volume-high text-xs"></i>
+                            </button>
+                            ${saveBtn}
+                        </div>
+                    </div>
+                    ${entry.example ? `<p class="text-xs text-slate-500 italic bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">"${esc(entry.example)}"</p>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    // KHỐI 2: TRẠM NGỮ PHÁP
     if (matchedStructs.length > 0) {
-        html += `<p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Trạm ngữ pháp (${matchedStructs.length})</p>`;
+        html += `<p class="text-xs font-extrabold uppercase tracking-wider text-slate-400 pt-2">Trạm ngữ pháp (${matchedStructs.length})</p>`;
         html += matchedStructs.map(st => `
             <div onclick="jumpToGlobalSearchStructure('${st.id}')" class="cursor-pointer bg-white hover:bg-indigo-50/40 rounded-2xl border border-slate-200/90 hover:border-indigo-300 p-4 shadow-2xs transition-all flex items-center justify-between gap-3">
                 <div class="min-w-0 flex-1 space-y-1">
@@ -566,6 +704,7 @@ function handleGlobalSearchInput(rawQuery) {
         `).join('');
     }
 
+    // KHỐI 3: CÂU TÌNH HUỐNG
     if (matchedSits.length > 0) {
         const shownSits = matchedSits.slice(0, 15);
         html += `<p class="text-xs font-extrabold uppercase tracking-wider text-slate-400 pt-2">Câu tình huống khớp (${matchedSits.length})</p>`;
@@ -583,3 +722,4 @@ function handleGlobalSearchInput(rawQuery) {
 
     resBox.innerHTML = html;
 }
+

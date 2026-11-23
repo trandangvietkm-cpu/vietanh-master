@@ -14,9 +14,7 @@
 
     let libState = {
         level: 'A1',
-        pos: 'ALL',
         letter: 'ALL',
-        search: '',
         hideSaved: false,
         page: 1
     };
@@ -115,7 +113,6 @@
 
     // --- Các hàm lọc của Tab Khám phá 3K ---
     window.setVocabLibLevel = function (lv) { libState.level = lv; libState.page = 1; renderDictionaryPage(); };
-    window.setVocabLibPos = function (pos) { libState.pos = pos; libState.page = 1; renderDictionaryPage(); };
     window.setVocabLibLetter = function (letter) { libState.letter = letter; libState.page = 1; renderDictionaryPage(); };
     window.setVocabLibSearch = function (val) {
         const nextQ = String(val || '').trim();
@@ -185,7 +182,7 @@
         let list = [];
         try {
             list = JSON.parse(localStorage.getItem('va_vocab_bank')) || [];
-        } catch (e) {}
+        } catch (e) { }
 
         if (list.some(v => String(v.en || '').toLowerCase() === word.toLowerCase())) {
             if (typeof showToast === 'function') showToast(`Từ "${word}" đã có sẵn trong Sổ tay!`, 'info');
@@ -204,7 +201,6 @@
             topic: 'Oxford 3000',
             exampleEn: entry.example || '',
             exampleVi: entry.exampleVi || '',
-            exampleVi: '',
             mastered: false,
             foreverMastered: false,
             reviewStage: 0,
@@ -233,18 +229,9 @@
         const savedInLevel = levelPool.filter(e => savedSet.has(e.wordLower)).length;
         const progressPct = levelPool.length > 0 ? Math.round((savedInLevel / levelPool.length) * 100) : 0;
 
-        const qNorm = libState.search
-            ? (typeof removeVietnameseTones === 'function' ? removeVietnameseTones(libState.search) : libState.search.toLowerCase())
-            : '';
-
         const filtered = levelPool.filter(item => {
-            if (libState.pos !== 'ALL' && item.pos.toLowerCase() !== libState.pos) return false;
             if (libState.letter !== 'ALL' && !item.wordLower.startsWith(libState.letter.toLowerCase())) return false;
             if (libState.hideSaved && savedSet.has(item.wordLower)) return false;
-            if (qNorm) {
-                const viNorm = typeof removeVietnameseTones === 'function' ? removeVietnameseTones(item.vi) : item.vi.toLowerCase();
-                if (!item.wordLower.includes(qNorm) && !viNorm.includes(qNorm)) return false;
-            }
             return true;
         });
 
@@ -269,7 +256,7 @@
         `).join('');
 
         const cardsHTML = pageItems.length === 0
-            ? `<div class="col-span-1 md:col-span-2 bg-white rounded-3xl border border-slate-200 p-8 text-center text-sm text-slate-500">Không tìm thấy từ nào khớp với bộ lọc hiện tại.</div>`
+            ? `<div class="col-span-1 md:col-span-2 bg-white rounded-3xl border border-slate-200 p-8 text-center text-sm text-slate-500">Không có từ nào khớp với bộ lọc hiện tại.</div>`
             : pageItems.map(item => {
                 const isSaved = savedSet.has(item.wordLower);
                 const encoded = encodeURIComponent(item.word);
@@ -296,7 +283,7 @@
                                 ${saveBtn}
                             </div>
                         </div>
-                       ${item.example ? `
+                        ${item.example ? `
                             <div class="text-xs bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 leading-relaxed space-y-0.5">
                                 <p class="text-slate-700 italic">"${escHtml(item.example)}"</p>
                                 ${item.exampleVi ? `<p class="text-[11px] text-slate-500">${escHtml(item.exampleVi)}</p>` : ''}
@@ -320,6 +307,13 @@
 
         return `
             <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3.5">
+                <!-- Thanh Tra nhanh 2 chiều tràn ngang 100% -->
+                <button type="button" onclick="if (typeof openMiniLookup === 'function') openMiniLookup();"
+                    class="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-indigo-50/70 text-slate-500 hover:text-indigo-700 text-xs sm:text-sm font-medium text-left border border-slate-200/80 hover:border-indigo-200 transition-all">
+                    <i class="fa-solid fa-magnifying-glass text-indigo-500 text-xs sm:text-sm shrink-0"></i>
+                    <span class="truncate">Tra nhanh từ Anh – Việt (3.293 từ)...</span>
+                </button>
+
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <p class="text-xs sm:text-sm text-slate-600">
                         Tiến độ lưu trình độ <strong>${libState.level === 'ALL' ? 'Toàn bộ' : libState.level}</strong>:
@@ -330,23 +324,12 @@
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-between gap-2.5">
+                <!-- Hàng trình độ + nút Ẩn đã lưu căn gọn 2 bên -->
+                <div class="flex flex-wrap items-center justify-between gap-2">
                     <div class="flex flex-wrap items-center gap-1.5">${levelBtnsHTML}</div>
-                    <div class="flex flex-wrap items-center gap-2 flex-1 sm:flex-initial justify-end">
-                        <select onchange="setVocabLibPos(this.value)" class="px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="ALL" ${libState.pos === 'ALL' ? 'selected' : ''}>Mọi từ loại</option>
-                            <option value="n" ${libState.pos === 'n' ? 'selected' : ''}>Danh từ (n)</option>
-                            <option value="v" ${libState.pos === 'v' ? 'selected' : ''}>Động từ (v)</option>
-                            <option value="adj" ${libState.pos === 'adj' ? 'selected' : ''}>Tính từ (adj)</option>
-                            <option value="adv" ${libState.pos === 'adv' ? 'selected' : ''}>Trạng từ (adv)</option>
-                            <option value="prep" ${libState.pos === 'prep' ? 'selected' : ''}>Giới từ (prep)</option>
-                            <option value="phr" ${libState.pos === 'phr' ? 'selected' : ''}>Cụm từ (phr)</option>
-                        </select>
-                        <input id="vocab-lib-search-input" type="search" value="${escHtml(libState.search)}" oninput="setVocabLibSearch(this.value)" placeholder="Tra Anh / Việt..." class="w-36 sm:w-48 px-3 py-1.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-medium text-slate-800 outline-none focus:border-indigo-500">
-                        <button type="button" onclick="toggleVocabLibHideSaved()" class="px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${libState.hideSaved ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">
-                            <i class="fa-solid ${libState.hideSaved ? 'fa-eye-slash' : 'fa-eye'} mr-1"></i>Ẩn đã lưu
-                        </button>
-                    </div>
+                    <button type="button" onclick="toggleVocabLibHideSaved()" class="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all shrink-0 ${libState.hideSaved ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}">
+                        <i class="fa-solid ${libState.hideSaved ? 'fa-eye-slash' : 'fa-eye'} mr-1"></i>Ẩn đã lưu
+                    </button>
                 </div>
 
                 <div class="flex items-center gap-1 overflow-x-auto pb-1 pt-1 border-t border-slate-100">
@@ -358,6 +341,7 @@
             ${paginationHTML}
         `;
     }
+     
 
     function buildRandomFlashcardTabHTML(savedSet) {
         if (!fcState.currentItem) pickRandomDictFlashcard(false);
@@ -551,27 +535,19 @@
         return picked;
     }
 
-function renderDailyFiveWordsWidget() {
-        const homeView = document.getElementById('view-home');
-        if (!homeView) return;
+    function renderDailyFiveWordsWidget() {
+        const homeView = document.getElementById('home-daily-words-slot') || document.getElementById('view-home');
+      if (!homeView) return;
 
-        const dailyWords = getDailyFiveWords();
-        if (dailyWords.length === 0) return;
+      const dailyWords = getDailyFiveWords();
+      if (dailyWords.length === 0) return;
 
-        let widget = document.getElementById('va-daily-five-words-widget');
-        if (!widget) {
-            widget = document.createElement('div');
-            widget.id = 'va-daily-five-words-widget';
-            widget.className = 'mt-5';
-            // Chèn lên phía trên dòng Footer (Tâm sự tác giả)
-            const footerEl = homeView.querySelector('footer') ||
-                Array.from(homeView.children).find(el => (el.textContent || '').includes('Tâm sự tác giả'));
-            if (footerEl) {
-                homeView.insertBefore(widget, footerEl);
-            } else {
-                homeView.appendChild(widget);
-            }
-        }
+      let widget = document.getElementById('va-daily-five-words-widget');
+      if (!widget) {
+          widget = document.createElement('div');
+          widget.id = 'va-daily-five-words-widget';
+          homeView.appendChild(widget);
+      }
 
         const savedSet = getSavedWordSet();
         const todayStr = new Date().toLocaleDateString('vi-VN');
@@ -638,47 +614,48 @@ function renderDailyFiveWordsWidget() {
                 </div>
             </div>
         `;
+        // Thanh trượt 5 phần cho Mobile (đồng bộ khi vuốt hoặc bấm chọn)
+        const gridEl = widget.querySelector('.grid');
+        if (gridEl && dailyWords.length > 1) {
+            const bar = document.createElement('div');
+            bar.className = 'va-daily-progress-bar';
+            bar.innerHTML = dailyWords.map((_, idx) =>
+                `<button type="button" class="va-daily-seg ${idx === 0 ? 'active' : ''}" aria-label="Từ ${idx + 1}"></button>`
+            ).join('');
+            gridEl.insertAdjacentElement('afterend', bar);
+
+            const segs = Array.from(bar.querySelectorAll('.va-daily-seg'));
+            const updateActiveSeg = () => {
+                const step = gridEl.clientWidth + 12;
+                if (step <= 12) return;
+                const activeIdx = Math.max(0, Math.min(segs.length - 1, Math.round(gridEl.scrollLeft / step)));
+                segs.forEach((s, i) => s.classList.toggle('active', i === activeIdx));
+            };
+
+            gridEl.addEventListener('scroll', updateActiveSeg, { passive: true });
+            segs.forEach((seg, idx) => {
+                seg.addEventListener('click', () => {
+                    gridEl.scrollTo({ left: idx * (gridEl.clientWidth + 12), behavior: 'smooth' });
+                });
+            });
+        }
     }
-    // ==================== 4. GẮN VÀO ROUTER switchTab ====================
+
+    // ==================== 4. ĐĂNG KÝ HOOK VỚI SINGLE ROUTER ====================
+    window.renderDailyFiveWordsWidget = renderDailyFiveWordsWidget;
+    window.onEnterDictionaryTab = function () {
+        injectDictionaryNavAndView();
+        renderDictionaryPage();
+    };
+
     function initDictionaryPage() {
         injectDictionaryNavAndView();
         renderDailyFiveWordsWidget();
-        const origSwitchTab = window.switchTab;
-        window.switchTab = function (tab) {
-            injectDictionaryNavAndView();
-            const dictView = document.getElementById('view-dictionary');
-            const dictBtn = document.getElementById('nav-dictionary-btn');
-
-            if (tab === 'dictionary') {
-                // Ẩn tất cả các view khác trong <main>
-                const mainEl = document.querySelector('main');
-                if (mainEl) {
-                    Array.from(mainEl.children).forEach(ch => {
-                        if (ch.id && ch.id.startsWith('view-')) ch.classList.add('hidden');
-                    });
-                }
-                if (dictView) dictView.classList.remove('hidden');
-                if (dictBtn) dictBtn.className = "inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 transition-all shrink-0";
-                renderDictionaryPage();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                return;
-            }
-
-            if (dictView) dictView.classList.add('hidden');
-            if (dictBtn) dictBtn.className = "inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-all shrink-0";
-
-            if (typeof origSwitchTab === 'function') {
-                origSwitchTab.apply(this, arguments);
-            }
-            if (tab === 'home') {
-                renderDailyFiveWordsWidget();
-            }
-        };
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => setTimeout(initDictionaryPage, 120));
+        document.addEventListener('DOMContentLoaded', initDictionaryPage);
     } else {
-        setTimeout(initDictionaryPage, 120);
+        initDictionaryPage();
     }
 })();

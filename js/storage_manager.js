@@ -912,10 +912,10 @@
                 const initial = state.user.name.charAt(0).toUpperCase();
                 container.innerHTML = `
                     <div class="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 pl-1.5 pr-2.5 py-1 rounded-xl border border-slate-200 transition-all">
-                        <div onclick="switchTab('home')" class="w-7 h-7 rounded-lg bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center cursor-pointer" title="Xem bảng tiến độ cá nhân">
+                        <div onclick="switchTab('profile')" class="w-7 h-7 rounded-lg bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center cursor-pointer" title="Xem bảng tiến độ cá nhân">
                             ${initial}
                         </div>
-                        <span onclick="switchTab('home')" class="text-xs font-bold text-slate-700 hidden sm:inline max-w-[90px] truncate cursor-pointer">${state.user.name}</span>
+                        <span onclick="switchTab('profile')" class="text-xs font-bold text-slate-700 hidden sm:inline max-w-[90px] truncate cursor-pointer">${state.user.name}</span>
                         <button onclick="logoutUser()" class="ml-1 text-slate-400 hover:text-rose-600 text-xs" title="Đăng xuất">
                             <i class="fa-solid fa-right-from-bracket"></i>
                         </button>
@@ -923,9 +923,9 @@
                 `;
             } else {
                 container.innerHTML = `
-                    <button onclick="openAuthModal('login')" class="w-9 h-9 sm:w-auto sm:h-auto inline-flex items-center justify-center gap-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/70 transition-all" title="Đăng nhập">
+                    <button onclick="switchTab('profile')" class="w-9 h-9 sm:w-auto sm:h-auto inline-flex items-center justify-center gap-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/70 transition-all" title="Đăng nhập">
                         <i class="fa-regular fa-circle-user text-sm sm:text-base"></i>
-                        <span class="hidden sm:inline">Đăng nhập</span>
+                        <span class="hidden sm:inline">Hồ sơ</span>
                     </button>
                 `;
             }
@@ -952,14 +952,14 @@
                 regTab.className = "py-2 rounded-lg bg-white text-indigo-600 shadow-2xs transition-all";
                 loginTab.className = "py-2 rounded-lg text-slate-500 hover:text-slate-800 transition-all";
                 nameGroup.classList.remove('hidden');
-                modalTitle.innerText = "Tạo tài khoản học viên";
-                submitBtn.innerText = "Đăng ký & Lưu tiến độ";
+                modalTitle.innerText = "Tạo hồ sơ học viên";
+                submitBtn.innerText = "Tạo & Lưu trên thiết bị";
             } else {
                 loginTab.className = "py-2 rounded-lg bg-white text-indigo-600 shadow-2xs transition-all";
                 regTab.className = "py-2 rounded-lg text-slate-500 hover:text-slate-800 transition-all";
-                nameGroup.classList.add('hidden');
-                modalTitle.innerText = "Đăng nhập tài khoản";
-                submitBtn.innerText = "Đăng nhập & Đồng bộ tiến độ";
+                nameGroup.classList.remove('hidden');
+                modalTitle.innerText = "Cập nhật hồ sơ học viên";
+                submitBtn.innerText = "Lưu hồ sơ trên thiết bị";
             }
         }
 
@@ -978,7 +978,8 @@
             closeAuthModal();
             renderAuthHeaderUI();
             renderHomeDashboard();
-            showToast(`Chào mừng ${displayName}! Tiến độ học tập của bạn đã được lưu trữ.`, "success");
+            if (typeof renderProfilePage === 'function') renderProfilePage();
+            showToast(`Chào mừng ${displayName}! Hồ sơ đã được lưu trên thiết bị này.`, "success");
         }
 
         function quickDemoLogin() {
@@ -991,7 +992,8 @@
             closeAuthModal();
             renderAuthHeaderUI();
             renderHomeDashboard();
-            showToast("Đã đăng nhập nhanh với tài khoản Google (Demo)!", "success");
+            if (typeof renderProfilePage === 'function') renderProfilePage();
+            showToast("Đã thiết lập nhanh hồ sơ Học viên ViệtAnh trên thiết bị này!", "success");
         }
 
         function logoutUser() {
@@ -999,7 +1001,8 @@
             localStorage.removeItem('va_user');
             renderAuthHeaderUI();
             renderHomeDashboard();
-            showToast("Đã đăng xuất tài khoản. Tiến độ trên máy vẫn được giữ nguyên.", "info");
+            if (typeof renderProfilePage === 'function') renderProfilePage();
+            showToast("Đã chuyển về chế độ Khách tự học. Tiến độ trên máy vẫn được giữ nguyên.", "info");
         }
 
 

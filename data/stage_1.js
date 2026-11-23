@@ -1413,7 +1413,7 @@ if (window.VA_DATA_REGISTRY && typeof window.VA_DATA_REGISTRY.registerStage === 
                 "form": "negative",
                 "vi": "Những chiếc ghế kia không phải ghế của chúng ta.",
                 "sampleCasual": "Those aren't our seats.",
-                "sampleFormal": "Those are not our seats.",
+                "sampleFormal": "Those seats do not belong to us.",
                 "keywords": [
                     "those",
                     "aren't",

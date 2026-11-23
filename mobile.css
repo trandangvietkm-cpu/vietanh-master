@@ -231,3 +231,153 @@ body {
         display: none !important;
     }
 }
+/* ================= HEADER TỐI GIẢN & BOTTOM NAV TRÊN MOBILE ================= */
+/* Ẩn các nút điều hướng đã chuyển xuống Bottom Nav để Header thoáng như App Native */
+#nav-home-btn,
+#nav-notebook-btn,
+#nav-dictionary-btn,
+.va-hide-on-mobile-header {
+  display: none !important;
+}
+
+/* Thanh Bottom Navigation Bar 5 nút cố định sát đáy */
+#va-mobile-bottom-nav {
+  display: grid !important;
+  grid-template-columns: repeat(5, 1fr);
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid #e2e8f0;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
+}
+
+/* Tự động ẩn Bottom Nav khi vào Phòng luyện để không đè lên #floating-action-dock */
+body.va-in-workspace #va-mobile-bottom-nav,
+body.va-in-topic-practice #va-mobile-bottom-nav {
+  display: none !important;
+}
+
+.va-bnav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.va-bnav-icon {
+  width: 40px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: all 0.18s ease;
+}
+.va-bnav-item.is-active {
+  color: #4f46e5;
+}
+.va-bnav-item.is-active .va-bnav-icon {
+  background: rgba(79, 70, 229, 0.12);
+  color: #4f46e5;
+}
+html.va-dark .va-bnav-item {
+  color: #94a3b8;
+}
+html.va-dark .va-bnav-item.is-active,
+html.va-dark .va-bnav-item.is-active .va-bnav-icon {
+  color: #a5b4fc;
+}
+html.va-dark .va-bnav-item.is-active .va-bnav-icon {
+  background: rgba(99, 102, 241, 0.22);
+}
+
+.va-bnav-badge {
+  position: absolute;
+  top: -2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #4f46e5;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+  align-items: center;
+  justify-content: center;
+}
+
+body {
+  padding-bottom: 84px !important;
+}
+/* Trượt ngang 5 từ gợi ý hôm nay (Full 1 thẻ + Thanh 5 phần trên Mobile) */
+.va-daily-progress-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  #va-daily-five-words-widget .grid {
+    display: flex !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    gap: 12px;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  #va-daily-five-words-widget .grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  #va-daily-five-words-widget .grid > div {
+    flex: 0 0 100%;
+    width: 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .va-daily-progress-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 0 4px;
+  }
+
+  .va-daily-seg {
+    flex: 1;
+    height: 4px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+
+  .va-daily-seg.active {
+    background: #4f46e5;
+  }
+
+  html.dark .va-daily-seg {
+    background: #334155;
+  }
+
+  html.dark .va-daily-seg.active {
+    background: #818cf8;
+  }
+}

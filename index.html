@@ -154,6 +154,7 @@
             opacity: 1;
         }
     </style>
+    <script>if(localStorage.getItem('va_theme')==='dark')document.documentElement.classList.add('va-dark');</script>
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-800 antialiased selection:bg-indigo-100 selection:text-indigo-700">
 
@@ -161,6 +162,7 @@
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- Modal Đăng nhập / Đăng ký Lưu Tiến Độ -->
+    <!-- Modal Thiết lập Hồ sơ học viên (Lưu cục bộ trên thiết bị) -->
     <div id="auth-modal" class="hidden fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
         <div class="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-fade-in">
             <!-- Header Modal -->
@@ -169,24 +171,24 @@
                     <i class="fa-solid fa-xmark"></i>
                 </button>
                 <div class="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center text-xl mb-3">
-                    <i class="fa-solid fa-user-shield"></i>
+                    <i class="fa-solid fa-id-card"></i>
                 </div>
-                <h3 id="auth-modal-title" class="text-xl font-extrabold">Đăng nhập tài khoản</h3>
-                <p class="text-xs text-indigo-100 mt-1">Lưu trữ toàn bộ lộ trình 60 tình huống, điểm XP và Sổ tay của bạn.</p>
+                <h3 id="auth-modal-title" class="text-xl font-extrabold">Hồ sơ học viên</h3>
+                <p class="text-xs text-indigo-100 mt-1">Cá nhân hóa tên hiển thị của bạn. Toàn bộ tiến độ hiện được lưu trực tiếp trên thiết bị này (hỗ trợ sao lưu .json).</p>
             </div>
 
-            <!-- Tabs chuyển đổi Đăng nhập / Đăng ký -->
+            <!-- Tabs chuyển đổi -->
             <div class="px-6 pt-5">
                 <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-xl text-xs font-bold">
-                    <button id="tab-login-btn" onclick="switchAuthMode('login')" class="py-2 rounded-lg bg-white text-indigo-600 shadow-2xs transition-all">Đăng nhập</button>
-                    <button id="tab-register-btn" onclick="switchAuthMode('register')" class="py-2 rounded-lg text-slate-500 hover:text-slate-800 transition-all">Tạo tài khoản</button>
+                    <button id="tab-login-btn" onclick="switchAuthMode('login')" class="py-2 rounded-lg bg-white text-indigo-600 shadow-2xs transition-all">Cập nhật hồ sơ</button>
+                    <button id="tab-register-btn" onclick="switchAuthMode('register')" class="py-2 rounded-lg text-slate-500 hover:text-slate-800 transition-all">Tạo hồ sơ mới</button>
                 </div>
             </div>
 
             <!-- Form nhập liệu -->
             <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="p-6 space-y-4">
-                <div id="auth-name-group" class="hidden space-y-1.5">
-                    <label class="text-xs font-bold text-slate-600">Họ và tên hiển thị</label>
+                <div id="auth-name-group" class="space-y-1.5">
+                    <label class="text-xs font-bold text-slate-600">Tên hiển thị</label>
                     <div class="relative">
                         <i class="fa-regular fa-user text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"></i>
                         <input id="auth-name" type="text" placeholder="VD: Minh Anh" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 text-sm outline-none">
@@ -194,7 +196,7 @@
                 </div>
 
                 <div class="space-y-1.5">
-                    <label class="text-xs font-bold text-slate-600">Email học tập</label>
+                    <label class="text-xs font-bold text-slate-600">Email ghi chú (tùy chọn)</label>
                     <div class="relative">
                         <i class="fa-regular fa-envelope text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"></i>
                         <input id="auth-email" type="email" required placeholder="hocvien@email.com" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 text-sm outline-none">
@@ -202,7 +204,7 @@
                 </div>
 
                 <div class="space-y-1.5">
-                    <label class="text-xs font-bold text-slate-600">Mật khẩu</label>
+                    <label class="text-xs font-bold text-slate-600">Mã khóa cá nhân (lưu cục bộ)</label>
                     <div class="relative">
                         <i class="fa-solid fa-lock text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm"></i>
                         <input id="auth-password" type="password" required placeholder="••••••••" class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 text-sm outline-none">
@@ -210,18 +212,18 @@
                 </div>
 
                 <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 transition-all">
-                    Đăng nhập & Đồng bộ tiến độ
+                    Lưu hồ sơ trên thiết bị
                 </button>
 
                 <div class="relative flex py-1 items-center">
                     <div class="flex-grow border-t border-slate-200"></div>
-                    <span class="flex-shrink mx-3 text-[11px] text-slate-400 font-medium">HOẶC TIẾP TỤC VỚI</span>
+                    <span class="flex-shrink mx-3 text-[11px] text-slate-400 font-medium">HOẶC</span>
                     <div class="flex-grow border-t border-slate-200"></div>
                 </div>
 
                 <button type="button" onclick="quickDemoLogin()" class="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-center gap-2 transition-all">
-                    <i class="fa-brands fa-google text-rose-500"></i>
-                    <span>Đăng nhập nhanh bằng Google (Demo)</span>
+                    <i class="fa-solid fa-bolt text-indigo-500"></i>
+                    <span>Dùng nhanh với tên "Học viên ViệtAnh"</span>
                 </button>
             </form>
         </div>
@@ -287,7 +289,7 @@
 
                 <!-- Nút Đăng nhập / Hồ sơ người dùng (Chỉ hiện Icon trên Mobile) -->
                 <div id="user-auth-area">
-                    <button onclick="openAuthModal('login')" class="w-9 h-9 sm:w-auto sm:h-auto inline-flex items-center justify-center gap-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/70 transition-all" title="Đăng nhập">
+                    <button onclick="switchTab('profile')" class="w-9 h-9 sm:w-auto sm:h-auto inline-flex items-center justify-center gap-1.5 sm:px-3 sm:py-2 rounded-xl text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/70 transition-all" title="Đăng nhập">
                         <i class="fa-regular fa-circle-user text-sm sm:text-base"></i>
                         <span class="hidden sm:inline">Đăng nhập</span>
                     </button>
@@ -299,198 +301,15 @@
     <!-- Main Content -->
     <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
-        <!-- ==================== TAB 0: TRANG CHỦ (HOME DASHBOARD) ==================== -->
-        <div id="view-home" class="hidden space-y-6">
-            <!-- Hero Banner & Tiến độ cá nhân -->
-            <div class="bg-gradient-to-br from-indigo-900 via-indigo-800 to-blue-900 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
-                <div class="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                    <div class="space-y-3 max-w-xl">
-                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-indigo-100 text-xs font-bold">
-                            <i class="fa-solid fa-sparkles text-amber-300"></i>
-                            <span id="home-greeting-tag">Lộ trình luyện phản xạ dịch Việt - Anh</span>
-                        </div>
-                        <h2 id="home-welcome-title" class="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight">
-                            Làm chủ cấu trúc câu tiếng Anh qua tình huống thực tế
-                        </h2>
-                        <p class="text-xs sm:text-sm text-indigo-100/90 leading-relaxed">
-                            Hệ thống đánh giá theo <strong>3 trạng thái (Chuẩn xác / Đạt - Góp ý nhẹ / Chưa đạt)</strong> và chỉ tích <strong>Hoàn thành</strong> khi câu dịch áp dụng đúng cấu trúc mục tiêu và đúng nghĩa.
-                        </p>
-                        <div class="pt-2 flex flex-wrap items-center gap-3">
-                            <button onclick="continueLearningFromHome()" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-extrabold bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md transition-all">
-                                <i class="fa-solid fa-play"></i>
-                                <span id="home-cta-text">Học tiếp ngay</span>
-                            </button>
-                        <button onclick="switchTab('practice'); backToStructureLibrary();" class="inline-flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-white/15 hover:bg-white/25 text-white border border-white/20 transition-all">
-    <i class="fa-solid fa-cubes"></i>
-    <span>Sơ đồ học</span>
-</button>
-                        </div>
-                    </div>
-
-                    <!-- Thẻ tổng kết tiến độ tròn -->
-                    <div class="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl p-4 sm:p-5 w-full md:w-64 shrink-0 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-bold uppercase tracking-wider text-indigo-200">Tiến độ tổng thể</span>
-                            <span id="home-progress-percent" class="text-lg font-extrabold text-amber-300">0%</span>
-                        </div>
-                        <div class="w-full h-2.5 bg-black/30 rounded-full overflow-hidden">
-                            <div id="home-progress-bar" class="h-full bg-amber-400 rounded-full transition-all duration-500" style="width: 0%"></div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2 pt-1 text-center">
-                            <div class="bg-black/20 rounded-xl p-2.5">
-                                <div id="home-completed-count" class="text-lg font-extrabold text-emerald-300">0/0</div>
-                                <div class="text-[11px] text-indigo-200">Đã đạt</div>
-                            </div>
-                            <div class="bg-black/20 rounded-xl p-2.5">
-                                <div id="home-retry-count" class="text-lg font-extrabold text-amber-300">0</div>
-                                <div class="text-[11px] text-indigo-200">Cần làm lại</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-          <!-- 4 Thẻ thống kê & Trạng thái (Giao diện UX đã tối ưu không bị cắt chữ) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Thẻ 1: Cấu trúc hoàn tất -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all flex items-center gap-3.5">
-            <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0">
-                <i class="fa-solid fa-circle-check"></i>
-            </div>
-            <div>
-                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cấu trúc hoàn tất</p>
-                <h4 id="stat-mastered-structs" class="text-base font-extrabold text-slate-900 mt-0.5">0 / 0 bộ</h4>
-                <p class="text-[11px] text-slate-500">Hoàn thành 100% tình huống</p>
-            </div>
-        </div>
-
-        <!-- Thẻ 2: Câu chưa đạt / Sai -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all flex items-center gap-3.5">
-            <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg shrink-0">
-                <i class="fa-solid fa-rotate-left"></i>
-            </div>
-            <div>
-                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Câu chưa đạt / Sai</p>
-                <h4 id="stat-failed-situations" class="text-base font-extrabold text-slate-900 mt-0.5">0 tình huống</h4>
-                <p class="text-[11px] text-slate-500">Cần dịch lại rèn luyện</p>
-            </div>
-        </div>
-
-        <!-- Thẻ 3: Hộp ôn tập thông minh -->
-        <div onclick="switchTab('review')" class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-indigo-400 transition-all flex items-center gap-3.5 cursor-pointer group">
-            <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg shrink-0 group-hover:scale-105 transition-transform">
-                <i class="fa-solid fa-brain"></i>
-            </div>
-            <div>
-                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Hộp ôn tập</p>
-                <h4 id="stat-review-box-count" class="text-base font-extrabold text-slate-900 mt-0.5">0 câu</h4>
-                <p class="text-[11px] text-indigo-600 font-semibold flex items-center gap-1">Ôn định kỳ 3 ngày <i class="fa-solid fa-arrow-right text-[9px]"></i></p>
-            </div>
-        </div>
-
-        <!-- Thẻ 4: Trạng thái tài khoản -->
-        <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all flex items-center gap-3.5">
-            <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg shrink-0">
-                <i class="fa-solid fa-cloud-arrow-up"></i>
-            </div>
-            <div>
-                <p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tài khoản</p>
-                <h4 id="stat-account-status" class="text-xs font-extrabold text-slate-900 mt-0.5 leading-snug">Chế độ Khách</h4>
-                <button id="stat-account-btn" onclick="openAuthModal('login')" class="text-[11px] font-bold text-indigo-600 hover:underline mt-0.5 block">Đăng nhập đồng bộ</button>
-            </div>
-        </div>
-    </div>
-
-            <!-- Bảng Chuỗi ngày Streak thật (7 ngày gần nhất) & Sao lưu / Khôi phục tiến độ (.json) -->
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                <!-- Cột trái (7 phần): Chuỗi ngày Streak thật -->
-                <div class="lg:col-span-7 bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-5 space-y-3.5">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-10 h-10 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center text-lg shrink-0">
-                                <i class="fa-solid fa-fire"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">Chuỗi ngày học tập (Streak)</h3>
-                                <p id="home-streak-status-text" class="text-xs text-slate-500 mt-0.5">Hoàn thành ít nhất 1 câu đạt chuẩn hôm nay để thắp lửa!</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="px-2.5 py-1 rounded-xl text-xs font-extrabold bg-orange-50 text-orange-700 border border-orange-200/80">
-                                Hiện tại: <span id="home-streak-current">0</span> ngày
-                            </span>
-                            <span class="px-2.5 py-1 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                <i class="fa-solid fa-trophy text-amber-500 mr-1"></i>Kỷ lục: <span id="home-streak-longest">0</span>
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- Lịch 7 ngày gần nhất -->
-                    <div id="home-streak-7days" class="grid grid-cols-7 gap-1.5 sm:gap-2 pt-1">
-                        <!-- Render bằng JS -->
-                    </div>
-                </div>
-
-                <!-- Cột phải (5 phần): Sao lưu & Khôi phục tiến độ học viên (.json) -->
-                <div class="lg:col-span-5 bg-white rounded-3xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between gap-3.5">
-                    <div class="flex items-start gap-3">
-                        <div class="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg shrink-0">
-                            <i class="fa-solid fa-floppy-disk"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">Sao lưu & Khôi phục tiến độ</h3>
-                            <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                                Lưu toàn bộ XP, Streak, tiến độ Sơ đồ, Sổ tay & Từ vựng ra file <code>.json</code> để chuyển máy hoặc tránh mất dữ liệu khi xóa trình duyệt.
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="flex flex-wrap items-center gap-2 pt-1">
-                        <button type="button" onclick="exportStudentProgressJSON()" class="flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all">
-                            <i class="fa-solid fa-download"></i>
-                            <span>Tải sao lưu (.json)</span>
-                        </button>
-                        <label class="flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 cursor-pointer transition-all">
-                            <i class="fa-solid fa-upload"></i>
-                            <span>Khôi phục (.json)</span>
-                            <input id="student-progress-import-input" type="file" accept=".json" onchange="importStudentProgressJSON(event)" class="hidden">
-                        </label>
-                    </div>
-                    <p class="text-[11px] text-slate-400">
-                        <i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i>An toàn: File sao lưu <strong>không chứa</strong> khóa Gemini API cá nhân của bạn.
-                    </p>
-                </div>
-            </div>
-
-            <!-- Danh sách Tình huống nhập sai / chưa đạt cần làm lại (Nếu có) -->
-            <div id="home-retry-section" class="hidden bg-amber-50/70 border border-amber-200 rounded-3xl p-5 sm:p-6 space-y-3">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-sm sm:text-base font-extrabold text-amber-900 flex items-center gap-2">
-                        <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
-                        Các tình huống bạn nhập chưa đúng (Chưa được tích hoàn thành)
-                    </h3>
-                    <span class="text-xs font-semibold text-amber-700">Bấm vào để dịch lại</span>
-                </div>
-                <div id="home-retry-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <!-- Render bằng JS -->
-                </div>
-            </div>
-
-            <!-- Chân trang riêng của Trang chủ: Nút mở Pop-up Tâm sự tác giả -->
-            <footer id="home-author-footer" class="pt-4 mt-2 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-                <div class="flex items-center gap-2 text-center sm:text-left">
-                    <span class="w-2 h-2 rounded-full bg-indigo-500 hidden sm:inline-block"></span>
-                    <span>ViệtAnh Master — Xây dựng với niềm đam mê tự học tiếng Anh từ con số 0.</span>
-                </div>
-                <button type="button" onclick="toggleAuthorModal(true)" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-rose-50 to-amber-50 hover:from-rose-100 hover:to-amber-100 text-rose-700 border border-rose-200/80 font-bold text-xs shadow-2xs hover:shadow-xs transition-all active:scale-95 shrink-0">
-                    <span class="text-sm leading-none">💌</span>
-                    <span>Tâm sự tác giả | Author's Note</span>
-                </button>
-            </footer>
+            <!-- ==================== TAB 0: TRANG CHỦ (HOME DASHBOARD - BÀN HỌC HÔM NAY) ==================== -->
+        <div id="view-home" class="space-y-5">
+            <div id="home-workspace-top" class="space-y-5"></div>
+            <div id="home-daily-words-slot"></div>
+            <div id="home-workspace-bottom" class="space-y-5"></div>
         </div>
 
         <!-- ==================== TAB 1: KHU VỰC LUYỆN TẬP ==================== -->
-        <div id="view-practice" class="space-y-6">
+        <div id="view-practice" class="hidden space-y-6">
             
             <!-- Thanh chuyển đổi Chế độ luyện tập -->
             <div id="practice-mode-switcher-bar" class="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
@@ -751,6 +570,10 @@
                 <!-- Thanh công cụ gọn 1 dòng mở Popup Bộ lọc Chủ đề tự do -->
                 <div id="topic-filter-card" class="bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
                     <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" onclick="exitStageCheckpointToRoadmap()" class="inline-flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-white border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 shadow-2xs transition-all shrink-0" title="Quay lại Sơ đồ học">
+                            <i class="fa-solid fa-arrow-left"></i>
+                            <span class="hidden sm:inline">Quay lại</span>
+                        </button>
                         <button id="open-topic-filter-btn" type="button" onclick="openTopicFilterModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/90 shadow-2xs transition-all">
                             <i class="fa-solid fa-sliders"></i>
                             <span>Bộ lọc</span>
@@ -1701,10 +1524,10 @@
     <script src="./data/data_registry.js"></script>
     <script src="./data/stage_1.js"></script>
     <!-- Khi soạn thêm Chặng 2..8, chỉ cần thêm 1 dòng: <script src="./data/stage_2.js"></script> -->
-    <script src="./js/storage_manager.js"></script>
+    <script src="./js/storage_manager.js?v=4"></script>
     <script src="./js/audio_engine.js"></script>
-    <script src="./js/ai_evaluator.js"></script>
-    <script src="./js/dashboard_roadmap.js"></script>
+    <script src="./js/ai_evaluator.js?v=2"></script>
+    <script src="./js/dashboard_roadmap.js?v=3"></script>
     <script src="./js/app_controller.js"></script>
     <script src="./js/modals_search.js"></script>
     <script src="./js/audio_drill.js"></script>
@@ -1712,6 +1535,8 @@
     <script src="./js/vocab_module.js"></script>
     <script src="./js/gemini_assistant.js"></script>
     <script src="./js/vocab_library.js"></script>
-    <script src="./js/vocab_quiz.js"></script>
+    <script src="./js/vocab_quiz.js?v=2"></script>
+    <script src="js/vocab_quick_tools.js"></script>
+    <script src="./js/mobile_shell.js?v=3"></script>
 </body>
 </html>

@@ -5,42 +5,68 @@
  */
 
         function switchTab(tab) {
-            const viewHome = document.getElementById('view-home');
-            const viewPractice = document.getElementById('view-practice');
-            const viewNotebook = document.getElementById('view-notebook');
-            const viewReview = document.getElementById('view-review');
+            const targetTab = ['home', 'practice', 'notebook', 'review', 'dictionary', 'profile'].includes(tab)
+                ? tab
+                : 'practice';
+            state.activeTab = targetTab;
 
             if (typeof stopAudioDrillSession === 'function') stopAudioDrillSession(false);
 
-            viewHome.classList.add('hidden');
-            viewPractice.classList.add('hidden');
-            viewNotebook.classList.add('hidden');
-            if (viewReview) viewReview.classList.add('hidden');
+            // 1. Ẩn đồng loạt mọi màn hình view-* bên trong <main>
+            const mainEl = document.querySelector('main');
+            if (mainEl) {
+                Array.from(mainEl.children).forEach(el => {
+                    if (el.id && el.id.startsWith('view-')) {
+                        el.classList.add('hidden');
+                    }
+                });
+            }
 
-            if (tab === 'home') {
-                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
-                viewHome.classList.remove('hidden');
-                renderHomeDashboard();
-            } else if (tab === 'notebook') {
-                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
-                viewNotebook.classList.remove('hidden');
-                renderNotebook();
-            } else if (tab === 'review') {
-                document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
-                if (viewReview) viewReview.classList.remove('hidden');
-                renderReviewPage();
+            // 2. Gỡ trạng thái phòng luyện mặc định
+            document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
+
+            // 3. Mở đúng 1 màn hình mục tiêu
+            if (targetTab === 'home') {
+                document.getElementById('view-home')?.classList.remove('hidden');
+                if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+                if (typeof window.renderDailyFiveWordsWidget === 'function') window.renderDailyFiveWordsWidget();
+            } else if (targetTab === 'notebook') {
+                document.getElementById('view-notebook')?.classList.remove('hidden');
+                if (typeof window.onEnterNotebookTab === 'function') {
+                    window.onEnterNotebookTab();
+                } else if (typeof renderNotebook === 'function') {
+                    renderNotebook();
+                }
+            } else if (targetTab === 'review') {
+                document.getElementById('view-review')?.classList.remove('hidden');
+                if (typeof renderReviewPage === 'function') renderReviewPage();
+            } else if (targetTab === 'dictionary') {
+                if (typeof window.onEnterDictionaryTab === 'function') window.onEnterDictionaryTab();
+                document.getElementById('view-dictionary')?.classList.remove('hidden');
+            } else if (targetTab === 'profile') {
+                document.getElementById('view-profile')?.classList.remove('hidden');
+                if (typeof window.onEnterProfileTab === 'function') window.onEnterProfileTab();
             } else {
-                viewPractice.classList.remove('hidden');
+                document.getElementById('view-practice')?.classList.remove('hidden');
                 if (state.practiceMode === 'structure' && state.selectedStructureId) {
                     document.body.classList.add('va-in-workspace');
-                    document.body.classList.remove('va-in-topic-practice');
                 } else if (state.practiceMode === 'topic') {
-                    document.body.classList.remove('va-in-workspace');
                     document.body.classList.add('va-in-topic-practice');
-                } else {
-                    document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
                 }
             }
+
+            // 4. Đồng bộ trạng thái nút Từ điển trên Header & Bottom Nav Mobile
+            const dictBtn = document.getElementById('nav-dictionary-btn');
+            if (dictBtn) {
+                dictBtn.className = targetTab === 'dictionary'
+                    ? "inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 transition-all shrink-0"
+                    : "inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 transition-all shrink-0";
+            }
+            if (typeof window.onTabChanged === 'function') {
+                window.onTabChanged(targetTab);
+            }
+
+            window.scrollTo(0, 0);
         }
 
 // [Đã tách Trang chủ Dashboard, Bộ lọc & Sơ đồ học 8 Chặng sang: js/dashboard_roadmap.js]

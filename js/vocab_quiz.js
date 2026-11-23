@@ -466,18 +466,27 @@
                 <div class="space-y-2 text-left">
                     <p class="text-xs font-extrabold uppercase tracking-wider text-rose-500">Các từ bạn vừa nhầm (${quizState.wrongList.length})</p>
                     <div class="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                        ${quizState.wrongList.map(w => `
+                        ${quizState.wrongList.map(w => {
+                            const safeJsWord = String(w.word || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                            return `
                             <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-                                <div class="min-w-0">
+                                <div class="min-w-0 flex items-center gap-1.5 flex-wrap">
                                     <span class="font-extrabold text-indigo-950">${escHtml(w.word)}</span>
-                                    <span class="text-slate-400 mx-1">•</span>
+                                    <button type="button"
+                                        onclick="event.stopPropagation(); if (typeof speakText === 'function') speakText('${safeJsWord}', this, 0.95);"
+                                        class="w-6 h-6 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200/80 inline-flex items-center justify-center shrink-0 transition-all"
+                                        title="Nghe phát âm từ này">
+                                        <i class="fa-solid fa-volume-high text-[10px]"></i>
+                                    </button>
+                                    <span class="text-slate-400">•</span>
                                     <span class="font-semibold text-emerald-700">${escHtml(w.vi)}</span>
                                 </div>
                                 <button type="button" onclick="saveQuizWrongWord('${encodeURIComponent(w.word)}', this)" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-indigo-600 text-amber-800 hover:text-white border border-amber-200 font-bold text-xs shrink-0 transition-all">
                                     + Lưu
                                 </button>
                             </div>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </div>
                 </div>
             ` : `<p class="text-xs font-bold text-emerald-600 bg-emerald-50 py-2.5 px-4 rounded-xl border border-emerald-200">🎯 Quá đỉnh! Bạn không trả lời sai từ nào!</p>`;
@@ -522,7 +531,6 @@
         }
     }
 
-    // ==================== KHỞI TẠO & GẮN HOOK ====================
    // ==================== KHỞI TẠO & GẮN HOOK ====================
     function initQuizHooks() {
         document.addEventListener('keydown', (e) => {

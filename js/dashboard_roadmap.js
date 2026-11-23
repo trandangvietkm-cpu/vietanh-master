@@ -6,127 +6,395 @@
  *  - Sơ đồ học 8 Chặng A1–B1 (Dẫn đường mềm) & Trạm Ôn trộn cuối Chặng (Checkpoint)
  */
 
-// ==================== QUẢN LÝ TRANG CHỦ & ĐĂNG NHẬP ====================
-    function renderHomeDashboard() {
-            let totalCompleted = 0;
-            let masteredStructs = 0;
-            let totalSituations = 0;
-            const totalStructsCount = SENTENCE_STRUCTURES.length;
+        // ==================== THEO DÕI SỐ CÂU ĐẠT TRONG NGÀY (CHO MỤC TIÊU 5 CÂU & LỊCH 30 NGÀY) ====================
+    function getTodayDateKey() {
+        if (typeof getDateKeyWithOffset === 'function') return getDateKeyWithOffset(0);
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
 
-            SENTENCE_STRUCTURES.forEach(struct => {
-                totalSituations += struct.situations.length;
-                const count = struct.situations.filter(sit => (state.completedSituations[sit.id] || 0) >= 7).length;
-                totalCompleted += count;
-                if (count === struct.situations.length) masteredStructs++;
-            });
+    function getDailyProgressMap() {
+        try {
+            return JSON.parse(localStorage.getItem('va_daily_counts')) || {};
+        } catch (e) {
+            return {};
+        }
+    }
 
-            const failedKeys = Object.keys(state.failedSituations).filter(id => (state.completedSituations[id] || 0) < 7);
-            const percent = totalSituations > 0 ? Math.round((totalCompleted / totalSituations) * 100) : 0;
+    function syncTodayCompletedCounter() {
+        const todayKey = getTodayDateKey();
+        const completedIds = Object.keys(state.completedSituations || {}).filter(id => (state.completedSituations[id] || 0) >= 7);
+        const totalNow = completedIds.length;
+        const map = getDailyProgressMap();
 
-            // Cập nhật số lượng câu trong hộp ôn tập lên thẻ thống kê trang chủ
-            const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-            const statReviewEl = document.getElementById('stat-review-box-count');
-            if (statReviewEl) statReviewEl.innerText = `${reviewBox.length} câu`;
+        // Lưu mốc tổng số câu đầu ngày để tự tính số câu đạt thêm trong hôm nay (100% offline, không cần sửa ai_evaluator)
+        const baseKey = 'va_daily_base_' + todayKey;
+        let baseTotal = localStorage.getItem(baseKey);
+        if (baseTotal === null) {
+            // Nếu hôm nay đã có streakActiveToday từ trước khi nâng cấp -> ghi nhận tối thiểu 1 câu
+            const initialBase = state.streakActiveToday ? Math.max(0, totalNow - 1) : totalNow;
+            localStorage.setItem(baseKey, String(initialBase));
+            baseTotal = String(initialBase);
+        }
 
-            document.getElementById('home-progress-percent').innerText = `${percent}%`;
-            document.getElementById('home-progress-bar').style.width = `${percent}%`;
-            document.getElementById('home-completed-count').innerText = `${totalCompleted}/${totalSituations}`;
-            document.getElementById('home-retry-count').innerText = failedKeys.length;
-            document.getElementById('stat-mastered-structs').innerText = `${masteredStructs} / ${totalStructsCount} bộ`;
-            document.getElementById('stat-failed-situations').innerText = `${failedKeys.length} tình huống`;
+        const gainedToday = Math.max(0, totalNow - Number(baseTotal));
+        const recordedToday = Math.max(map[todayKey] || 0, gainedToday, state.streakActiveToday ? 1 : 0);
+        if (recordedToday !== (map[todayKey] || 0)) {
+            map[todayKey] = recordedToday;
+            localStorage.setItem('va_daily_counts', JSON.stringify(map));
+        }
+        return { todayCount: recordedToday, dailyMap: map };
+    }
 
-            if (state.user) {
-                document.getElementById('home-greeting-tag').innerText = `Xin chào, ${state.user.name}! Tiến độ đã được bảo vệ`;
-                document.getElementById('stat-account-status').innerText = state.user.email;
-                document.getElementById('stat-account-btn').innerText = "Đã đồng bộ tiến độ ✓";
-                document.getElementById('stat-account-btn').onclick = null;
+    function getNextRecommendedStation() {
+        if (!SENTENCE_STRUCTURES || SENTENCE_STRUCTURES.length === 0) return null;
+        return SENTENCE_STRUCTURES.find(struct =>
+            (struct.situations || []).some(sit => (state.completedSituations[sit.id] || 0) < 7)
+        ) || SENTENCE_STRUCTURES[0];
+    }
+
+    window.openQuickSkillMode = function (skill) {
+        const targetStruct = getNextRecommendedStation();
+        if (skill === 'translate') {
+            continueLearningFromHome();
+            return;
+        }
+        if (skill === 'dictation' || skill === 'audiodrill') {
+            if (!targetStruct) {
+                switchTab('practice');
+                return;
+            }
+            switchTab('practice');
+            switchPracticeMode('structure');
+            openStructureWorkspace(targetStruct.id);
+            if (typeof switchWorkspaceSubTab === 'function') {
+                switchWorkspaceSubTab(skill);
+            }
+            return;
+        }
+        if (skill === 'dictionary') {
+            switchTab('dictionary');
+            return;
+        }
+        if (skill === 'quiz') {
+            if (typeof openVocabQuizModal === 'function') {
+                openVocabQuizModal();
             } else {
-                document.getElementById('home-greeting-tag').innerText = "Lộ trình luyện phản xạ dịch Việt - Anh";
-                document.getElementById('stat-account-status').innerText = "Chế độ Khách (Guest)";
-                document.getElementById('stat-account-btn').innerText = "Đăng nhập để đồng bộ →";
-                document.getElementById('stat-account-btn').onclick = () => openAuthModal('login');
-            }
-
-            // Cập nhật thẻ Chuỗi ngày Streak thật & Lịch 7 ngày gần nhất
-            const streakCurEl = document.getElementById('home-streak-current');
-            const streakLongEl = document.getElementById('home-streak-longest');
-            const streakStatusEl = document.getElementById('home-streak-status-text');
-            const streakGridEl = document.getElementById('home-streak-7days');
-
-            if (streakCurEl) streakCurEl.innerText = state.streak || 0;
-            if (streakLongEl) streakLongEl.innerText = `${state.longestStreak || 0} ngày`;
-            if (streakStatusEl) {
-                streakStatusEl.innerText = state.streakActiveToday
-                    ? '🔥 Hôm nay bạn đã giữ lửa thành công! Hẹn gặp lại ngày mai để nối dài chuỗi.'
-                    : (state.streak > 0
-                        ? `⏳ Chuỗi ${state.streak} ngày đang chờ bạn! Hoàn thành 1 câu đạt chuẩn hôm nay để không bị đứt chuỗi.`
-                        : 'Hoàn thành ít nhất 1 câu đạt chuẩn hôm nay để thắp lửa ngày đầu tiên!');
-            }
-            if (streakGridEl && typeof getDateKeyWithOffset === 'function') {
-                const histSet = new Set(state.streakHistory || []);
-                const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-                const cells = [];
-                for (let offset = -6; offset <= 0; offset++) {
-                    const d = new Date();
-                    d.setDate(d.getDate() + offset);
-                    const key = getDateKeyWithOffset(offset);
-                    const isToday = offset === 0;
-                    const isActive = histSet.has(key);
-                    const dayLabel = isToday ? 'Hôm nay' : dayNames[d.getDay()];
-                    const dateNum = d.getDate();
-
-                    const boxCls = isActive
-                        ? 'bg-orange-50 border-orange-300 text-orange-700'
-                        : (isToday ? 'bg-indigo-50/70 border-indigo-300 border-dashed text-indigo-700' : 'bg-slate-50 border-slate-200/80 text-slate-400');
-                    const iconHtml = isActive
-                        ? '<i class="fa-solid fa-fire text-orange-500 text-sm"></i>'
-                        : (isToday ? '<i class="fa-regular fa-clock text-indigo-400 text-sm"></i>' : '<i class="fa-solid fa-minus text-slate-300 text-xs"></i>');
-
-                    cells.push(`
-                        <div class="rounded-2xl border p-2 text-center flex flex-col items-center justify-center gap-1 ${boxCls}">
-                            <span class="text-[10px] font-bold truncate max-w-full">${dayLabel}</span>
-                            <div class="w-7 h-7 rounded-full ${isActive ? 'bg-white shadow-2xs' : 'bg-white/60'} flex items-center justify-center">
-                                ${iconHtml}
-                            </div>
-                            <span class="text-[10px] font-semibold opacity-75">${dateNum}/${d.getMonth() + 1}</span>
-                        </div>
-                    `);
-                }
-                streakGridEl.innerHTML = cells.join('');
-            }
-
-            // Hiển thị danh sách các tình huống nhập sai / chưa đạt để bấm vào làm lại ngay
-            const retrySection = document.getElementById('home-retry-section');
-            const retryList = document.getElementById('home-retry-list');
-
-            if (failedKeys.length > 0) {
-                retrySection.classList.remove('hidden');
-                const itemsHTML = [];
-                SENTENCE_STRUCTURES.forEach(struct => {
-                    struct.situations.forEach((sit, idx) => {
-                        if (failedKeys.includes(sit.id)) {
-                            const lastScore = state.failedSituations[sit.id];
-                            itemsHTML.push(`
-                                <div onclick="jumpToSituation('${struct.id}', ${idx})" class="bg-white p-3.5 rounded-2xl border border-amber-200 hover:border-indigo-400 cursor-pointer flex items-center justify-between gap-3 shadow-2xs transition-all">
-                                    <div class="min-w-0">
-                                        <span class="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
-                                            ${struct.shortName} • Câu ${idx + 1} • Chưa đạt
-                                        </span>
-                                        <p class="text-xs sm:text-sm font-bold text-slate-800 truncate mt-1">"${sit.vi}"</p>
-                                    </div>
-                                    <span class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-xs font-bold">
-                                        <i class="fa-solid fa-rotate-right"></i>
-                                    </span>
-                                </div>
-                            `);
-                        }
-                    });
-                });
-                retryList.innerHTML = itemsHTML.join('');
-            } else {
-                retrySection.classList.add('hidden');
+                switchTab('dictionary');
             }
         }
+    };
+
+    window.startTodayPlan = function () {
+        const { todayCount } = syncTodayCompletedCounter();
+        const failedKeys = Object.keys(state.failedSituations || {}).filter(id => (state.completedSituations[id] || 0) < 7);
+        const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+
+        if (todayCount < 5) {
+            continueLearningFromHome();
+        } else if (failedKeys.length > 0 || reviewBox.length > 0) {
+            switchTab('review');
+        } else {
+            window.openQuickSkillMode('quiz');
+        }
+    };
+
+    // ==================== RENDER TRANG CHỦ MỚI: 6 KHỐI "BÀN HỌC HÔM NAY" ====================
+    function renderHomeDashboard() {
+        const topEl = document.getElementById('home-workspace-top');
+        const bottomEl = document.getElementById('home-workspace-bottom');
+        if (!topEl || !bottomEl) return;
+
+        const DAILY_GOAL = 5;
+        const { todayCount, dailyMap } = syncTodayCompletedCounter();
+        const remainingGoal = Math.max(0, DAILY_GOAL - todayCount);
+        const goalPercent = Math.min(100, Math.round((todayCount / DAILY_GOAL) * 100));
+
+        // Tìm trạm đang học & tiến độ của trạm đó
+        const nextStruct = getNextRecommendedStation();
+        let nextStructPct = 0;
+        let nextStructDone = 0;
+        let nextStructTotal = 0;
+        if (nextStruct) {
+            nextStructTotal = (nextStruct.situations || []).length;
+            nextStructDone = (nextStruct.situations || []).filter(sit => (state.completedSituations[sit.id] || 0) >= 7).length;
+            nextStructPct = nextStructTotal > 0 ? Math.round((nextStructDone / nextStructTotal) * 100) : 0;
+        }
+
+        // Gom câu chưa đạt & Hộp ôn tập
+        const failedKeys = Object.keys(state.failedSituations || {}).filter(id => (state.completedSituations[id] || 0) < 7);
+        const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+        const totalReviewNeed = failedKeys.length + reviewBox.length;
+
+        // Trích 1 câu sai tiêu biểu để hiển thị trên Thẻ "Ôn câu đã sai"
+        let firstFailedItem = null;
+        if (failedKeys.length > 0) {
+            for (const struct of SENTENCE_STRUCTURES) {
+                const idx = (struct.situations || []).findIndex(s => failedKeys.includes(s.id));
+                if (idx !== -1) {
+                    firstFailedItem = {
+                        structId: struct.id,
+                        structName: struct.shortName || struct.title,
+                        sitIndex: idx,
+                        vi: struct.situations[idx].vi
+                    };
+                    break;
+                }
+            }
+        }
+
+        const userName = (state.user && state.user.name) ? state.user.name : 'bạn';
+        const goalMsg = remainingGoal > 0
+            ? `Còn <strong>${remainingGoal} câu</strong> nữa là đạt mục tiêu hôm nay!`
+            : `🎉 Tuyệt vời! Bạn đã hoàn thành mục tiêu <strong>${DAILY_GOAL} câu</strong> hôm nay!`;
+
+        // --- KHỐI 1: THẺ "BÀN HỌC HÔM NAY" (HERO SÁNG, CHỮ ĐẬM DỄ ĐỌC) ---
+        const heroHTML = `
+            <div class="bg-white rounded-3xl p-5 sm:p-6 border border-indigo-200/80 shadow-sm space-y-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="space-y-1">
+                        <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-extrabold">
+                            <i class="fa-solid fa-sun text-amber-500"></i>
+                            <span>Bàn học hôm nay</span>
+                        </div>
+                        <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                            Chào ${userName}!
+                        </h2>
+                        <p class="text-xs sm:text-sm text-slate-600">${goalMsg}</p>
+                    </div>
+                    <button type="button" onclick="state.selectedStructureId = null; switchPracticeMode('structure'); switchTab('practice');"
+                        class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200/80 transition-all">
+                        <i class="fa-solid fa-map-location-dot text-indigo-500"></i>
+                        <span>Sơ đồ học</span>
+                    </button>
+                </div>
+
+                ${nextStruct ? `
+                    <div class="p-3.5 sm:p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div class="min-w-0 flex-1 space-y-1.5">
+                            <div class="flex items-center gap-2 text-[11px] font-bold text-indigo-700">
+                                <span class="px-2 py-0.5 rounded-md bg-white border border-indigo-200/80">Đang học</span>
+                                <span class="truncate">${nextStructDone}/${nextStructTotal} câu (${nextStructPct}%)</span>
+                            </div>
+                            <h3 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">${nextStruct.title}</h3>
+                            <div class="w-full h-2 bg-white rounded-full overflow-hidden border border-indigo-100">
+                                <div class="h-full bg-indigo-600 rounded-full transition-all duration-500" style="width: ${nextStructPct}%"></div>
+                            </div>
+                        </div>
+                        <button type="button" onclick="continueLearningFromHome()"
+                            class="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 transition-all">
+                            <i class="fa-solid fa-play text-xs"></i>
+                            <span>Học tiếp</span>
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+
+        // --- KHỐI 2: HÀNG 3 THẺ CHỈ SỐ HÔM NAY (3 CỘT NGANG) ---
+        const stats3HTML = `
+            <div class="grid grid-cols-3 gap-2.5 sm:gap-4">
+                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-center space-y-1">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase">Hôm nay</div>
+                    <div class="text-lg sm:text-2xl font-extrabold text-indigo-600 leading-none">${todayCount}/${DAILY_GOAL}</div>
+                    <div class="text-[11px] font-semibold text-slate-500">câu đạt</div>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-center space-y-1">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase">Streak</div>
+                    <div class="text-lg sm:text-2xl font-extrabold text-orange-600 leading-none">
+                        <i class="fa-solid fa-fire text-orange-500 text-sm sm:text-lg mr-0.5"></i>${state.streak || 0}
+                    </div>
+                    <div class="text-[11px] font-semibold text-slate-500">Kỷ lục: ${state.longestStreak || 0}</div>
+                </div>
+                <div class="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-2xs text-center space-y-1">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase">Mục tiêu</div>
+                    <div class="text-lg sm:text-2xl font-extrabold text-emerald-600 leading-none">${goalPercent}%</div>
+                    <div class="text-[11px] font-semibold text-slate-500">${goalPercent >= 100 ? 'Hoàn thành' : 'Đang tiến tới'}</div>
+                </div>
+            </div>
+        `;
+
+        // --- KHỐI 3: THẺ "KẾ HOẠCH 10 PHÚT HÔM NAY" (3 BƯỚC NỐI TIẾP) ---
+        const step1Done = todayCount >= DAILY_GOAL;
+        const step2Done = totalReviewNeed === 0;
+        const planHTML = `
+            <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-4">
+                <div class="flex items-center justify-between gap-2">
+                    <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-indigo-600"></i>
+                        <span>Kế hoạch 10 phút hôm nay</span>
+                    </h3>
+                    <span class="text-xs font-bold text-slate-400">3 bước gọn</span>
+                </div>
+
+                <div class="space-y-2.5">
+                    <button type="button" onclick="continueLearningFromHome()" class="w-full p-3.5 rounded-2xl border ${step1Done ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50/80 border-slate-200/80 hover:border-indigo-300'} flex items-center justify-between gap-3 text-left transition-all">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="w-7 h-7 rounded-full ${step1Done ? 'bg-emerald-600 text-white' : 'bg-indigo-600 text-white'} text-xs font-extrabold flex items-center justify-center shrink-0">
+                                ${step1Done ? '<i class="fa-solid fa-check"></i>' : '1'}
+                            </span>
+                            <div class="min-w-0">
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">Luyện dịch bài đang học</div>
+                                <div class="text-[11px] text-slate-500">${Math.min(todayCount, DAILY_GOAL)}/${DAILY_GOAL} câu mới hôm nay</div>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400 shrink-0"></i>
+                    </button>
+
+                    <button type="button" onclick="${firstFailedItem ? `jumpToSituation('${firstFailedItem.structId}', ${firstFailedItem.sitIndex})` : "switchTab('review')"}" class="w-full p-3.5 rounded-2xl border ${step2Done ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50/80 border-slate-200/80 hover:border-indigo-300'} flex items-center justify-between gap-3 text-left transition-all">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="w-7 h-7 rounded-full ${step2Done ? 'bg-emerald-600 text-white' : 'bg-rose-500 text-white'} text-xs font-extrabold flex items-center justify-center shrink-0">
+                                ${step2Done ? '<i class="fa-solid fa-check"></i>' : '2'}
+                            </span>
+                            <div class="min-w-0">
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">Ôn câu đến hạn / câu sai</div>
+                                <div class="text-[11px] text-slate-500">${totalReviewNeed > 0 ? `${totalReviewNeed} câu đang chờ ôn lại` : 'Không có câu tồn đọng ✓'}</div>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400 shrink-0"></i>
+                    </button>
+
+                    <button type="button" onclick="openQuickSkillMode('quiz')" class="w-full p-3.5 rounded-2xl border bg-slate-50/80 border-slate-200/80 hover:border-indigo-300 flex items-center justify-between gap-3 text-left transition-all">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="w-7 h-7 rounded-full bg-amber-500 text-white text-xs font-extrabold flex items-center justify-center shrink-0">3</span>
+                            <div class="min-w-0">
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">Luyện phản xạ Từ vựng / Nghe–Nói</div>
+                                <div class="text-[11px] text-slate-500">Chơi nhanh 60 giây hoặc Shadowing Trạm hiện tại</div>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-xs text-slate-400 shrink-0"></i>
+                    </button>
+                </div>
+
+                <button type="button" onclick="startTodayPlan()" class="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-extrabold shadow-sm transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play text-xs"></i>
+                    <span>Bắt đầu kế hoạch hôm nay</span>
+                </button>
+            </div>
+        `;
+
+        // --- KHỐI 4: THẺ "ÔN CÂU ĐÃ SAI" (TÔNG HỒNG NHẠT - CHỈ HIỆN KHI CÓ CÂU CẦN ÔN) ---
+        const retryCardHTML = (firstFailedItem || reviewBox.length > 0) ? `
+            <div class="bg-rose-50/80 border border-rose-200 rounded-3xl p-5 space-y-3">
+                <div class="flex items-center justify-between gap-2">
+                    <h3 class="text-sm sm:text-base font-extrabold text-rose-900 flex items-center gap-2">
+                        <i class="fa-solid fa-rotate-left text-rose-600"></i>
+                        <span>Ôn câu đã sai (${totalReviewNeed} câu chờ ôn)</span>
+                    </h3>
+                </div>
+                ${firstFailedItem ? `
+                    <div class="bg-white/90 rounded-2xl p-3.5 border border-rose-200/70">
+                        <div class="text-[11px] font-bold text-rose-600 mb-1">${firstFailedItem.structName} • Câu ${firstFailedItem.sitIndex + 1}</div>
+                        <p class="text-sm font-bold text-slate-800">"${firstFailedItem.vi}"</p>
+                    </div>
+                ` : `
+                    <p class="text-xs sm:text-sm text-rose-800">Bạn có <strong>${reviewBox.length} câu</strong> trong Hộp ôn tập định kỳ cần xem lại.</p>
+                `}
+                <div class="flex flex-wrap items-center gap-2.5 pt-0.5">
+                    <button type="button" onclick="${firstFailedItem ? `jumpToSituation('${firstFailedItem.structId}', ${firstFailedItem.sitIndex})` : "switchTab('review')"}"
+                        class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-extrabold shadow-xs transition-all">
+                        Ôn ngay
+                    </button>
+                    <button type="button" onclick="switchTab('review')"
+                        class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs sm:text-sm font-bold transition-all">
+                        Mở Hộp ôn tập
+                    </button>
+                </div>
+            </div>
+        ` : '';
+
+        // Trên PC: xếp Khối 3 & Khối 4 (hoặc Khối 1 + 2) gọn gàng; trên Mobile: dọc mượt từ trên xuống
+        topEl.innerHTML = heroHTML + stats3HTML + `
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                <div class="${retryCardHTML ? 'lg:col-span-7' : 'lg:col-span-12'}">${planHTML}</div>
+                ${retryCardHTML ? `<div class="lg:col-span-5">${retryCardHTML}</div>` : ''}
+            </div>
+        `;
+
+        // --- KHỐI 5B: LỐI TẮT "LUYỆN TẬP NHANH" (NẰM NGAY DƯỚI KHỐI 5 TỪ GỢI Ý HÔM NAY) ---
+        const quickSkillsHTML = `
+            <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-amber-500"></i>
+                    <span>Luyện tập nhanh</span>
+                </h3>
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                    <button type="button" onclick="openQuickSkillMode('translate')" class="p-3 rounded-2xl bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-language text-indigo-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Luyện dịch câu</span>
+                    </button>
+                    <button type="button" onclick="openQuickSkillMode('dictation')" class="p-3 rounded-2xl bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-pen-nib text-emerald-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Nghe chép</span>
+                    </button>
+                    <button type="button" onclick="openQuickSkillMode('audiodrill')" class="p-3 rounded-2xl bg-sky-50/70 hover:bg-sky-100/80 border border-sky-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-headphones text-sky-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Nghe–Nói</span>
+                    </button>
+                    <button type="button" onclick="openQuickSkillMode('dictionary')" class="p-3 rounded-2xl bg-purple-50/70 hover:bg-purple-100/80 border border-purple-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-book-atlas text-purple-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Từ điển & Thẻ</span>
+                    </button>
+                    <button type="button" onclick="openQuickSkillMode('quiz')" class="col-span-2 sm:col-span-1 p-3 rounded-2xl bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-stopwatch text-rose-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Phản xạ 60s</span>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // --- KHỐI 6: LỊCH "30 NGÀY GẦN ĐÂY" ---
+        const histSet = new Set(state.streakHistory || []);
+        const calendarCells = [];
+        for (let offset = -29; offset <= 0; offset++) {
+            const d = new Date();
+            d.setDate(d.getDate() + offset);
+            const key = typeof getDateKeyWithOffset === 'function'
+                ? getDateKeyWithOffset(offset)
+                : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const cnt = dailyMap[key] || 0;
+            const hasStreak = histSet.has(key);
+            const isToday = offset === 0;
+
+            let cellCls = 'bg-slate-100 text-slate-400 border-slate-200/80';
+            let titleTxt = `${d.getDate()}/${d.getMonth() + 1}: Nghỉ`;
+            if (cnt >= DAILY_GOAL || (hasStreak && cnt === 0)) {
+                cellCls = 'bg-emerald-500 text-white border-emerald-500 font-extrabold';
+                titleTxt = `${d.getDate()}/${d.getMonth() + 1}: Đạt mục tiêu`;
+            } else if (cnt > 0 || hasStreak) {
+                cellCls = 'bg-amber-400 text-slate-900 border-amber-400 font-extrabold';
+                titleTxt = `${d.getDate()}/${d.getMonth() + 1}: Học nhẹ (${cnt} câu)`;
+            }
+
+            const ringToday = isToday ? 'ring-2 ring-indigo-500 ring-offset-1' : '';
+            calendarCells.push(`
+                <div title="${titleTxt}" class="h-8 sm:h-9 rounded-xl border text-[11px] flex items-center justify-center ${cellCls} ${ringToday}">
+                    ${d.getDate()}
+                </div>
+            `);
+        }
+
+        const calendar30HTML = `
+            <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <i class="fa-regular fa-calendar-check text-emerald-600"></i>
+                        <span>30 ngày gần đây</span>
+                    </h3>
+                    <div class="flex items-center gap-3 text-[11px] font-semibold text-slate-500">
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>Đạt mục tiêu</span>
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>Học nhẹ</span>
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-200 inline-block"></span>Nghỉ</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-10 gap-1.5 sm:gap-2">
+                    ${calendarCells.join('')}
+                </div>
+            </div>
+        `;
+
+        bottomEl.innerHTML = quickSkillsHTML + calendar30HTML;
+    }
 
         function jumpToSituation(structId, sitIndex) {
             switchTab('practice');
@@ -434,6 +702,7 @@
             renderAuthHeaderUI();
             setupTopicButtons();
             switchPracticeMode('structure');
+            switchTab('home');
 
             // Lắng nghe phím tắt Enter trong textarea
          const textarea = document.getElementById('user-translation');
@@ -1014,6 +1283,33 @@
             }
         }
 
+       function handleRoadmapStationClick(structId) {
+            // Nhịp 1: Chạm vào trạm khác -> chỉ chuyển khung viền chọn sang trạm đó, chưa mở phòng luyện
+            if (state.focusedRoadmapStructId !== structId) {
+                state.focusedRoadmapStructId = structId;
+                renderLearningRoadmap();
+                return;
+            }
+            // Nhịp 2: Chạm thêm lần nữa vào trạm đang sáng viền -> vào Phòng luyện tập
+            openStructureWorkspace(structId);
+        }
+
+        // Bảng màu nhận diện riêng cho 8 Chặng (tương thích cả Sáng & Tối)
+        const STAGE_COLOR_THEMES = {
+            1: { hex: '#4f46e5', soft: 'rgba(79, 70, 229, 0.11)', pillBg: 'rgba(79, 70, 229, 0.14)', pillText: '#4338ca' }, // Indigo
+            2: { hex: '#0284c7', soft: 'rgba(2, 132, 199, 0.11)', pillBg: 'rgba(2, 132, 199, 0.14)', pillText: '#0369a1' }, // Sky
+            3: { hex: '#059669', soft: 'rgba(5, 150, 105, 0.11)', pillBg: 'rgba(5, 150, 105, 0.14)', pillText: '#047857' }, // Emerald
+            4: { hex: '#d97706', soft: 'rgba(217, 119, 6, 0.11)',  pillBg: 'rgba(217, 119, 6, 0.14)',  pillText: '#b45309' }, // Amber
+            5: { hex: '#ea580c', soft: 'rgba(234, 88, 12, 0.11)',  pillBg: 'rgba(234, 88, 12, 0.14)',  pillText: '#c2410c' }, // Orange
+            6: { hex: '#e11d48', soft: 'rgba(225, 29, 72, 0.11)',  pillBg: 'rgba(225, 29, 72, 0.14)',  pillText: '#be123c' }, // Rose
+            7: { hex: '#7c3aed', soft: 'rgba(124, 58, 237, 0.11)', pillBg: 'rgba(124, 58, 237, 0.14)', pillText: '#6d28d9' }, // Violet
+            8: { hex: '#0d9488', soft: 'rgba(13, 148, 136, 0.11)', pillBg: 'rgba(13, 148, 136, 0.14)', pillText: '#0f766e' }  // Teal
+        };
+
+        function getStageColorTheme(stageNumber) {
+            return STAGE_COLOR_THEMES[stageNumber] || STAGE_COLOR_THEMES[1];
+        }
+
         function renderLearningRoadmap() {
             const container = document.getElementById('structure-roadmap-view');
             if (!container) return;
@@ -1030,21 +1326,30 @@
             if (masteredEl) masteredEl.innerText = totalCompletedAll;
             if (totalSitEl) totalSitEl.innerText = totalSituationsAll;
 
-            // Xác định Trạm gợi ý "Tiếp theo" (cấu trúc đầu tiên trên lộ trình còn câu chưa hoàn thành)
+            // Xác định Trạm gợi ý "Tiếp theo"
             const nextRecommendedStruct = SENTENCE_STRUCTURES.find(st =>
                 (st.situations || []).some(sit => (state.completedSituations[sit.id] || 0) < 7)
             ) || null;
 
-            const stagesHtml = ROADMAP_STAGES.map((stageInfo, sIdx) => {
+            // Mặc định sáng khung viền ở trạm "Tiếp theo" nếu chưa chọn trạm nào
+            if (!state.focusedRoadmapStructId || !SENTENCE_STRUCTURES.some(s => s.id === state.focusedRoadmapStructId)) {
+                state.focusedRoadmapStructId = nextRecommendedStruct
+                    ? nextRecommendedStruct.id
+                    : (SENTENCE_STRUCTURES[0] ? SENTENCE_STRUCTURES[0].id : null);
+            }
+
+            const stagesHtml = ROADMAP_STAGES.map((stageInfo) => {
+                const theme = getStageColorTheme(stageInfo.number);
                 const stageStructs = SENTENCE_STRUCTURES.filter(st => st.stageId === stageInfo.id);
                 const hasContent = stageStructs.length > 0;
 
-                // KIỂU A: Chặng chưa có bài -> hiển thị thẻ thu gọn mờ "Sắp ra mắt"
                 if (!hasContent) {
                     return `
-                        <div class="relative bg-white/70 rounded-2xl border border-dashed border-slate-300/90 px-4 sm:px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 opacity-75">
+                        <div class="relative bg-white/70 rounded-2xl border border-dashed border-slate-300/90 px-4 sm:px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 opacity-80"
+                             style="border-left: 5px solid ${theme.hex};">
                             <div class="flex items-center gap-3 min-w-0 flex-1">
-                                <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-400 font-extrabold text-sm flex items-center justify-center shrink-0">
+                                <div class="w-9 h-9 rounded-xl font-extrabold text-sm flex items-center justify-center shrink-0"
+                                     style="background: ${theme.pillBg}; color: ${theme.hex};">
                                     ${stageInfo.number}
                                 </div>
                                 <div class="min-w-0">
@@ -1062,7 +1367,6 @@
                     `;
                 }
 
-                // Chặng đã có cấu trúc: tính tiến độ tổng của Chặng
                 let stageTotalSits = 0;
                 let stageDoneSits = 0;
                 stageStructs.forEach(st => {
@@ -1071,6 +1375,7 @@
                 });
                 const stagePercent = stageTotalSits > 0 ? Math.round((stageDoneSits / stageTotalSits) * 100) : 0;
                 const isStageMastered = stageTotalSits > 0 && stageDoneSits === stageTotalSits;
+                const accentHex = isStageMastered ? '#059669' : theme.hex;
 
                 const stationsHtml = stageStructs.map((st, idx) => {
                     const total = (st.situations || []).length;
@@ -1078,18 +1383,41 @@
                     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
                     const isDone = total > 0 && done === total;
                     const isNext = nextRecommendedStruct && nextRecommendedStruct.id === st.id;
+                    const isFocused = state.focusedRoadmapStructId === st.id;
 
-                    const nodeClass = isDone
-                        ? 'bg-emerald-600 text-white shadow-emerald-200'
-                        : (isNext ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 shadow-indigo-200' : 'bg-slate-100 text-slate-600 border border-slate-200');
-                    const cardClass = isDone
-                        ? 'border-emerald-200 bg-emerald-50/20 hover:border-emerald-400'
-                        : (isNext ? 'border-indigo-400 bg-indigo-50/30 ring-2 ring-indigo-100 hover:border-indigo-500' : 'border-slate-200 bg-white hover:border-indigo-300');
+                    const nodeStyle = isDone
+                        ? 'background:#059669; color:#ffffff;'
+                        : (isFocused ? `background:${accentHex}; color:#ffffff;` : '');
+
+                    const nodeClass = isFocused
+                        ? 'ring-4 ring-slate-200/80 shadow-sm'
+                        : (isDone ? 'shadow-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200');
+
+                    const cardClass = isFocused
+                        ? (isDone
+                            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200 shadow-sm'
+                            : 'bg-indigo-50/25 shadow-sm')
+                        : (isDone
+                            ? 'border-emerald-200 bg-emerald-50/15 hover:border-emerald-400'
+                            : 'border-slate-200 bg-white hover:border-slate-300');
+
+                    const cardFocusStyle = (isFocused && !isDone)
+                        ? `border-color:${accentHex}; box-shadow: 0 0 0 2px ${theme.pillBg};`
+                        : '';
+
                     const statusPill = isDone
                         ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-crown text-amber-500 mr-1"></i>Hoàn thành</span>`
                         : (isNext
-                            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-600 text-white animate-pulse">Tiếp theo</span>`
+                            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold text-white" style="background:${accentHex};">Tiếp theo</span>`
                             : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">${done}/${total} câu</span>`);
+
+                    const ctaStyle = isFocused
+                        ? `background:${isDone ? '#059669' : accentHex}; color:#ffffff;`
+                        : `color:${isDone ? '#059669' : accentHex};`;
+
+                    const ctaClass = isFocused
+                        ? 'px-3 py-1.5 rounded-xl shadow-xs'
+                        : '';
 
                     const previewEn = st.situations && st.situations[0] ? st.situations[0].sampleCasual : '';
                     const isLastInStage = idx === stageStructs.length - 1;
@@ -1098,17 +1426,17 @@
                         <div class="relative flex items-stretch gap-3">
                             <!-- Đường nối trạm bên trái -->
                             <div class="flex flex-col items-center pt-3">
-                                <div class="w-8 h-8 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 shadow-xs transition-all ${nodeClass}">
+                                <div class="w-8 h-8 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 shadow-xs transition-all ${nodeClass}" style="${nodeStyle}">
                                     ${isDone ? '<i class="fa-solid fa-check"></i>' : (idx + 1)}
                                 </div>
                                 ${!isLastInStage ? `<div class="w-0.5 flex-1 my-1 rounded-full ${isDone ? 'bg-emerald-300' : 'bg-slate-200'}"></div>` : ''}
                             </div>
 
-                            <!-- Thẻ Trạm (Dẫn đường mềm: luôn bấm học được ngay) -->
-                            <div onclick="openStructureWorkspace('${st.id}')" class="flex-1 mb-2.5 p-4 rounded-2xl border ${cardClass} cursor-pointer transition-all shadow-2xs hover:shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <!-- Thẻ Trạm (Chạm lần 1: sáng khung chọn • Chạm lần 2: vào phòng luyện) -->
+                            <div onclick="handleRoadmapStationClick('${st.id}')" class="flex-1 mb-2.5 p-4 rounded-2xl border ${cardClass} cursor-pointer transition-all shadow-2xs hover:shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3" style="${cardFocusStyle}">
                                 <div class="min-w-0 flex-1 space-y-1">
                                     <div class="flex flex-wrap items-center gap-1.5">
-                                        <span class="text-[11px] font-extrabold text-indigo-600">Trạm ${stageInfo.number}.${idx + 1}</span>
+                                        <span class="text-[11px] font-extrabold" style="color:${accentHex};">Trạm ${stageInfo.number}.${idx + 1}</span>
                                         <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200">${normalizeCEFRLevel(st.level)}</span>
                                         ${statusPill}
                                     </div>
@@ -1119,11 +1447,11 @@
                                 <div class="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0 sm:min-w-[125px]">
                                     <div class="flex items-center gap-2 w-28 sm:w-full">
                                         <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden flex-1">
-                                            <div class="h-full ${isDone ? 'bg-emerald-500' : 'bg-indigo-600'} rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                                            <div class="h-full rounded-full transition-all duration-500" style="width: ${pct}%; background:${isDone ? '#10b981' : accentHex};"></div>
                                         </div>
                                         <span class="text-[11px] font-bold text-slate-500">${pct}%</span>
                                     </div>
-                                    <span class="inline-flex items-center gap-1 text-xs font-extrabold ${isNext ? 'text-indigo-700 bg-white px-2.5 py-1 rounded-lg border border-indigo-200' : 'text-indigo-600'}">
+                                    <span class="inline-flex items-center gap-1 text-xs font-extrabold transition-all ${ctaClass}" style="${ctaStyle}">
                                         <span>${done > 0 && !isDone ? 'Học tiếp' : (isDone ? 'Ôn lại' : 'Bắt đầu')}</span>
                                         <i class="fa-solid fa-arrow-right text-[10px]"></i>
                                     </span>
@@ -1133,7 +1461,6 @@
                     `;
                 }).join('');
 
-                // Nút Trạm Ôn trộn cuối Chặng (tự sinh khi chặng có >= 2 cấu trúc hoặc >= 5 câu)
                 const checkpointBtnHtml = (stageStructs.length >= 2 || stageTotalSits >= 5) ? `
                     <div class="pt-2 pl-11">
                         <button type="button" onclick="startStageCheckpointReview('${stageInfo.id}')" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm transition-all">
@@ -1144,25 +1471,29 @@
                 ` : '';
 
                 return `
-                    <div class="bg-white rounded-3xl border ${isStageMastered ? 'border-emerald-300' : 'border-slate-200/90'} shadow-sm overflow-hidden">
-                        <div class="px-5 py-4 bg-gradient-to-r ${isStageMastered ? 'from-emerald-50/90 to-teal-50/40' : 'from-indigo-50/80 via-white to-slate-50'} border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                    <div class="bg-white rounded-3xl border ${isStageMastered ? 'border-emerald-300' : 'border-slate-200/90'} shadow-sm overflow-hidden"
+                         style="border-left: 5px solid ${accentHex};">
+                        <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3"
+                             style="background: linear-gradient(90deg, ${isStageMastered ? 'rgba(16, 185, 129, 0.12)' : theme.soft} 0%, transparent 78%);">
                             <div class="flex items-start gap-3 min-w-0 flex-1">
-                                <div class="w-10 h-10 rounded-2xl ${isStageMastered ? 'bg-emerald-600' : 'bg-indigo-600'} text-white font-extrabold text-base flex items-center justify-center shadow-xs shrink-0">
+                                <div class="w-10 h-10 rounded-2xl text-white font-extrabold text-base flex items-center justify-center shadow-xs shrink-0"
+                                     style="background:${accentHex};">
                                     ${isStageMastered ? '<i class="fa-solid fa-crown text-amber-200"></i>' : stageInfo.number}
                                 </div>
                                 <div class="min-w-0">
                                     <div class="flex flex-wrap items-center gap-2">
                                         <h3 class="font-extrabold text-slate-900 text-sm sm:text-base leading-snug">${stageInfo.title}</h3>
-                                        <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-indigo-100 text-indigo-800">${stageInfo.levelRange}</span>
+                                        <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold"
+                                              style="background:${theme.pillBg}; color:${accentHex};">${stageInfo.levelRange}</span>
                                     </div>
                                     <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${stageInfo.desc}</p>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2.5 shrink-0">
                                 <div class="text-right">
-                                    <div class="text-xs font-extrabold ${isStageMastered ? 'text-emerald-700' : 'text-indigo-700'}">${stageDoneSits}/${stageTotalSits} câu</div>
+                                    <div class="text-xs font-extrabold" style="color:${accentHex};">${stageDoneSits}/${stageTotalSits} câu</div>
                                     <div class="w-24 h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
-                                        <div class="h-full ${isStageMastered ? 'bg-emerald-500' : 'bg-indigo-600'} rounded-full transition-all duration-500" style="width: ${stagePercent}%"></div>
+                                        <div class="h-full rounded-full transition-all duration-500" style="width: ${stagePercent}%; background:${accentHex};"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1240,3 +1571,298 @@
             state.structViewMode = 'roadmap';
             switchPracticeMode('structure');
         }
+// ==================== TRANG TÀI KHOẢN / HỒ SƠ (VIEW-PROFILE) ====================
+        function ensureProfileViewElement() {
+            let el = document.getElementById('view-profile');
+            if (!el) {
+                const mainEl = document.querySelector('main');
+                if (!mainEl) return null;
+                el = document.createElement('div');
+                el.id = 'view-profile';
+                el.className = 'hidden space-y-5';
+                mainEl.appendChild(el);
+            }
+            return el;
+        }
+
+        function getSavedVocabCountForProfile() {
+            try {
+                const nb = Array.isArray(state.notebook) ? state.notebook.length : 0;
+                const savedWords = JSON.parse(localStorage.getItem('va_vocab_notebook') || localStorage.getItem('va_saved_words') || '[]');
+                return Math.max(nb, Array.isArray(savedWords) ? savedWords.length : 0);
+            } catch (e) {
+                return Array.isArray(state.notebook) ? state.notebook.length : 0;
+            }
+        }
+
+        function getXpLevelInfo(xp) {
+            const safeXp = Math.max(0, Number(xp) || 0);
+            const xpPerLevel = 100;
+            const level = Math.floor(safeXp / xpPerLevel) + 1;
+            const currentInLevel = safeXp % xpPerLevel;
+            const titles = [
+                'Người khởi hành',
+                'Người kiên trì',
+                'Người xây nền',
+                'Chiến binh ngữ pháp',
+                'Phản xạ linh hoạt',
+                'Bậc thầy giao tiếp'
+            ];
+            const rankTitle = titles[Math.min(titles.length - 1, Math.floor((level - 1) / 2))];
+            return { level, rankTitle, currentInLevel, xpPerLevel, pct: Math.round((currentInLevel / xpPerLevel) * 100) };
+        }
+
+        window.exportProfileBackupJson = function () {
+            try {
+                const payload = {
+                    app: 'VietAnhMaster',
+                    exportedAt: new Date().toISOString(),
+                    storage: {}
+                };
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k) payload.storage[k] = localStorage.getItem(k);
+                }
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const today = getTodayDateKey();
+                a.href = url;
+                a.download = `vietanh-master-backup-${today}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+                if (typeof showToast === 'function') showToast('Đã tải xuống file sao lưu .json!', 'success');
+            } catch (e) {
+                if (typeof showToast === 'function') showToast('Không thể xuất file sao lưu lúc này.', 'warning');
+            }
+        };
+
+        window.triggerImportProfileBackup = function () {
+            let input = document.getElementById('va-profile-import-input');
+            if (!input) {
+                input = document.createElement('input');
+                input.id = 'va-profile-import-input';
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.className = 'hidden';
+                input.addEventListener('change', (ev) => {
+                    const file = ev.target.files && ev.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        try {
+                            const parsed = JSON.parse(String(reader.result || '{}'));
+                            const dataMap = (parsed && parsed.storage && typeof parsed.storage === 'object') ? parsed.storage : parsed;
+                            let restoredKeys = 0;
+                            Object.keys(dataMap).forEach(k => {
+                                if (typeof dataMap[k] === 'string') {
+                                    localStorage.setItem(k, dataMap[k]);
+                                    restoredKeys++;
+                                }
+                            });
+                            if (restoredKeys > 0) {
+                                if (typeof showToast === 'function') showToast('Khôi phục thành công! Đang tải lại ứng dụng...', 'success');
+                                setTimeout(() => window.location.reload(), 700);
+                            } else {
+                                if (typeof showToast === 'function') showToast('File sao lưu không có dữ liệu hợp lệ.', 'warning');
+                            }
+                        } catch (err) {
+                            if (typeof showToast === 'function') showToast('File .json không đúng định dạng!', 'warning');
+                        }
+                        input.value = '';
+                    };
+                    reader.readAsText(file);
+                });
+                document.body.appendChild(input);
+            }
+            input.click();
+        };
+
+        window.editProfileDisplayName = function () {
+            if (typeof openAuthModal === 'function') {
+                openAuthModal('login');
+                return;
+            }
+            const cur = (state.user && state.user.name) ? state.user.name : '';
+            const nextName = prompt('Nhập tên hiển thị của bạn:', cur);
+            if (nextName === null) return;
+            const trimmed = nextName.trim();
+            if (!state.user) state.user = {};
+            state.user.name = trimmed || 'Học viên';
+            if (typeof saveProgress === 'function') saveProgress();
+            renderProfilePage();
+            if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+        };
+        window.toggleThemeFromProfile = function () {
+          if (typeof window.toggleThemeMode === 'function') {
+              window.toggleThemeMode();
+          } else {
+              const isDark = document.documentElement.classList.toggle('va-dark');
+              localStorage.setItem('va_theme', isDark ? 'dark' : 'light');
+          }
+          renderProfilePage();
+      };    
+        
+
+        function renderProfilePage() {
+            const container = ensureProfileViewElement();
+            if (!container) return;
+
+            const userName = (state.user && state.user.name) ? state.user.name : 'Khách tự học';
+            const avatarLetter = userName.trim().charAt(0).toUpperCase() || 'V';
+            const xp = Number(state.xp) || 0;
+            const lvl = getXpLevelInfo(xp);
+            const streak = Number(state.streak) || 0;
+            const longestStreak = Number(state.longestStreak) || 0;
+            const masteredCount = Object.keys(state.completedSituations || {}).filter(id => (state.completedSituations[id] || 0) >= 7).length;
+            const savedVocabCount = getSavedVocabCountForProfile();
+            const isDark = document.documentElement.classList.contains('va-dark');
+
+            // Danh sách 6 huy hiệu offline
+            const badges = [
+                { icon: 'fa-shoe-prints', title: 'Khởi hành', desc: 'Đạt câu đầu tiên', unlocked: masteredCount >= 1, color: '#4f46e5' },
+                { icon: 'fa-fire', title: 'Giữ lửa 3 ngày', desc: 'Streak kỷ lục ≥ 3', unlocked: longestStreak >= 3, color: '#ea580c' },
+                { icon: 'fa-calendar-week', title: 'Tuần lễ bền bỉ', desc: 'Streak kỷ lục ≥ 7', unlocked: longestStreak >= 7, color: '#d97706' },
+                { icon: 'fa-award', title: 'Chăm chỉ 20 câu', desc: 'Đạt ≥ 20 tình huống', unlocked: masteredCount >= 20, color: '#059669' },
+                { icon: 'fa-bookmark', title: 'Tích lũy từ vựng', desc: 'Lưu ≥ 10 từ/mẫu câu', unlocked: savedVocabCount >= 10, color: '#0284c7' },
+                { icon: 'fa-crown', title: 'Chinh phục 500 XP', desc: 'Tích lũy ≥ 500 XP', unlocked: xp >= 500, color: '#7c3aed' }
+            ];
+            const unlockedCount = badges.filter(b => b.unlocked).length;
+
+            container.innerHTML = `
+                <!-- Thanh tiêu đề quay lại -->
+                <div class="flex items-center justify-between gap-3">
+                    <button type="button" onclick="switchTab('home')" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs sm:text-sm font-bold text-slate-700 hover:border-indigo-300 transition-all">
+                        <i class="fa-solid fa-arrow-left text-indigo-500"></i>
+                        <span>Trang chủ</span>
+                    </button>
+                    <span class="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Hồ sơ học viên</span>
+                </div>
+
+                <!-- Khối 1: Thông tin cá nhân & Cấp độ XP -->
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm space-y-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3.5 min-w-0">
+                            <div class="w-14 h-14 rounded-2xl bg-indigo-600 text-white text-xl font-extrabold flex items-center justify-center shadow-sm shrink-0">
+                                ${avatarLetter}
+                            </div>
+                            <div class="min-w-0">
+                                <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">${userName}</h2>
+                                <div class="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600">
+                                    <span>Cấp ${lvl.level} • ${lvl.rankTitle}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" onclick="editProfileDisplayName()" class="shrink-0 px-3 py-2 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-xs font-bold border border-slate-200/80 transition-all">
+                            <i class="fa-solid fa-user-pen mr-1"></i>Tài khoản
+                        </button>
+                    </div>
+
+                    <!-- Thanh tiến độ XP -->
+                    <div class="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/70 space-y-2">
+                        <div class="flex items-center justify-between text-xs font-extrabold">
+                            <span class="text-indigo-800"><i class="fa-solid fa-star text-amber-500 mr-1"></i>Tổng ${xp} XP</span>
+                            <span class="text-slate-600">${lvl.currentInLevel}/${lvl.xpPerLevel} XP lên Cấp ${lvl.level + 1}</span>
+                        </div>
+                        <div class="w-full h-2.5 bg-white rounded-full overflow-hidden border border-indigo-100">
+                            <div class="h-full bg-indigo-600 rounded-full transition-all duration-500" style="width: ${lvl.pct}%"></div>
+                        </div>
+                    </div>
+
+                    <!-- 4 chỉ số tổng quan -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
+                            <div class="text-lg font-extrabold text-emerald-600">${masteredCount}</div>
+                            <div class="text-[11px] font-semibold text-slate-500">Câu đã đạt</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
+                            <div class="text-lg font-extrabold text-orange-600">${streak} ngày</div>
+                            <div class="text-[11px] font-semibold text-slate-500">Streak hiện tại</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
+                            <div class="text-lg font-extrabold text-amber-600">${longestStreak} ngày</div>
+                            <div class="text-[11px] font-semibold text-slate-500">Kỷ lục chuỗi</div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
+                            <div class="text-lg font-extrabold text-sky-600">${savedVocabCount}</div>
+                            <div class="text-[11px] font-semibold text-slate-500">Mục Sổ tay</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Khối 2: Bộ sưu tập Huy hiệu Offline -->
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                            <i class="fa-solid fa-medal text-amber-500"></i>
+                            <span>Huy hiệu thành tích</span>
+                        </h3>
+                        <span class="text-xs font-extrabold text-indigo-600">${unlockedCount}/${badges.length} đã mở</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        ${badges.map(b => `
+                            <div class="p-3.5 rounded-2xl border ${b.unlocked ? 'border-slate-200 bg-white' : 'border-dashed border-slate-200 bg-slate-50/70 opacity-55'} flex items-start gap-3">
+                                <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm"
+                                     style="${b.unlocked ? `background:${b.color}; color:#fff;` : 'background:#e2e8f0; color:#94a3b8;'}">
+                                    <i class="fa-solid ${b.icon}"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-xs font-extrabold text-slate-900 truncate">${b.title}</div>
+                                    <div class="text-[11px] text-slate-500 leading-snug mt-0.5">${b.desc}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- Khối 3: Sao lưu dữ liệu & Tiện ích -->
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                    <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                        <i class="fa-solid fa-shield-halved text-emerald-600"></i>
+                        <span>Dữ liệu & Cài đặt</span>
+                    </h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button type="button" onclick="exportProfileBackupJson()" class="p-3.5 rounded-2xl bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200 text-left flex items-center gap-3 transition-all">
+                            <i class="fa-solid fa-download text-emerald-600 text-base"></i>
+                            <div>
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900">Sao lưu tiến độ (.json)</div>
+                                <div class="text-[11px] text-slate-500">Lưu toàn bộ lịch sử học về máy</div>
+                            </div>
+                        </button>
+                        <button type="button" onclick="triggerImportProfileBackup()" class="p-3.5 rounded-2xl bg-sky-50/80 hover:bg-sky-100/80 border border-sky-200 text-left flex items-center gap-3 transition-all">
+                            <i class="fa-solid fa-upload text-sky-600 text-base"></i>
+                            <div>
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900">Khôi phục từ file (.json)</div>
+                                <div class="text-[11px] text-slate-500">Nạp lại tiến độ trên thiết bị mới</div>
+                            </div>
+                        </button>
+                        <button type="button" onclick="toggleThemeFromProfile()" class="p-3.5 rounded-2xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center gap-3 transition-all">
+                            <i class="fa-solid ${isDark ? 'fa-sun text-amber-500' : 'fa-moon text-indigo-600'} text-base"></i>
+                            <div>
+                                <div class="text-xs sm:text-sm font-extrabold text-slate-900">Giao diện: ${isDark ? 'Tối' : 'Sáng'}</div>
+                                <div class="text-[11px] text-slate-500">Chạm để đổi chế độ Sáng / Tối</div>
+                            </div>
+                        </button>
+                        <button type="button" onclick="if (typeof toggleAuthorModal === 'function') toggleAuthorModal(true);" class="p-3.5 rounded-2xl bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200 text-left flex items-center gap-3 transition-all">
+                          <i class="fa-solid fa-heart text-rose-500 text-base"></i>
+                          <div>
+                              <div class="text-xs sm:text-sm font-extrabold text-slate-900">Tâm sự tác giả</div>
+                              <div class="text-[11px] text-slate-500">Câu chuyện tạo nên ViệtAnh Master</div>
+                          </div>
+                      </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        window.onEnterProfileTab = function () {
+            const el = ensureProfileViewElement();
+            if (el) el.classList.remove('hidden');
+            renderProfilePage();
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            ensureProfileViewElement();
+        });

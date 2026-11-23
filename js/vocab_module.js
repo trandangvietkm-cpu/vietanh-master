@@ -1378,15 +1378,11 @@ window.openQuickAddVocabModal = function (editId = null) {
 
     // Kiến trúc Single Router: Không ghi đè logic định tuyến của app_controller.js, chỉ bọc (wrap) để gắn thêm sub-tab Từ vựng khi mở 'notebook'
     const _baseSwitchTab = window.switchTab;
-    window.switchTab = function (tab) {
-        if (typeof _baseSwitchTab === 'function') {
-            _baseSwitchTab(tab);
-        }
-        if (tab === 'notebook') {
-            injectVocabSubTabsIntoNotebook();
-            const targetSub = getVocabBank().length > 0 ? 'vocab' : currentNotebookSubTab;
-            switchNotebookSubTab(targetSub);
-        }
+    // Đăng ký hook khi mở tab Sổ tay (không ghi đè Router trung tâm)
+    window.onEnterNotebookTab = function () {
+        injectVocabSubTabsIntoNotebook();
+        const targetSub = getVocabBank().length > 0 ? 'vocab' : currentNotebookSubTab;
+        switchNotebookSubTab(targetSub);
     };
 
     // ==================== TÍNH NĂNG V6: CHẠM VÀO CẢ Ô TỪ TRONG "CÂU TRẢ LỜI CHUẨN" LẪN "CÁCH DIỄN ĐẠT KHÁC" ====================
@@ -1496,13 +1492,19 @@ window.openQuickAddVocabModal = function (editId = null) {
                 }
                 cardBox.title = `Chạm để lưu nhanh từ '${cleanWord}' vào Sổ tay (+2 XP)`;
 
-                // Gắn sự kiện click vào cả ô từ để mở bảng Lưu từ (kèm đọc phát âm nhẹ)
+                cardBox.setAttribute('data-va-word', cleanWord);
+                // Gắn sự kiện click vào ô từ: đọc phát âm + hiện Popover 1 chạm (bấm "Sửa chi tiết" mới mở Form)
                 cardBox.addEventListener('click', function (ev) {
+                    ev.stopPropagation();
                     if (typeof speakText === 'function') {
                         speakText(cleanWord);
                     }
-                    window.onSampleWordClick(encoded, ev);
-                });
+                    if (typeof window.showWordPopover === 'function') {
+                        window.showWordPopover(cleanWord, cardBox, () => window.onSampleWordClick(encoded, ev));
+                    } else {
+                        window.onSampleWordClick(encoded, ev);
+                    }
+                });  
             }
         });
 

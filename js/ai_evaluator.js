@@ -1,12 +1,10 @@
 /**
  * MODULE 2: TRÍ TUỆ NHÂN TẠO, CHẤM ĐIỂM & PHÁT ÂM (js/ai_evaluator.js)
- * Phụ trách: Gợi ý sư phạm 3 mức, Phiên âm quốc tế IPA, Chấm điểm dịch câu (Gemini API + Smart Local Evaluator),
- *            Tạo câu hỏi biến thể AI, Đọc giọng bản xứ (Web Speech API) và Thu âm chấm điểm phát âm từng từ.
+ * Mô hình chấm điểm tinh gọn: So khớp chặt đa đáp án (Strict Multi-Answer) + Word-Level Diff chuẩn xác + Gemini AI Fallback.
  */
 
         // Hàm tự động sinh dữ liệu Gợi ý Mức 2 (Ngữ pháp), Mức 3 (Cách tạo câu) & Các cách nói tương tự
         function buildRichPedagogyData(question) {
-            // 1. Mức 2: Gợi ý ngữ pháp
             let grammarHint = question.grammarHint || "";
             if (!grammarHint) {
                 if (question.isStructureMode && question.structureInfo) {
@@ -18,23 +16,21 @@
                     } else if (ctx.includes("tương lai") || question.vi.toLowerCase().includes("sẽ")) {
                         tenseNote = "Ngữ cảnh hướng tới tương lai nên ưu tiên dùng 'will' hoặc động từ khuyết thiếu phù hợp.";
                     } else if (ctx.includes("câu hỏi") || question.vi.includes("?")) {
-                        tenseNote = "Đây là câu nghi vấn/lịch sự, hãy chú ý đảo trợ động từ lên trước chủ ngữ.";
+                        tenseNote = "Đây là câu nghi vấn/lịch sự, hãy chú ý đảo trợ động từ / To be lên trước chủ ngữ.";
                     }
                     grammarHint = `Áp dụng công thức <strong>${st.formula}</strong>. ${tenseNote}`;
                 } else {
                     const isQuestion = question.vi.includes("?");
                     grammarHint = isQuestion
-                        ? "Đây là câu hỏi giao tiếp thực tế: Hãy bắt đầu bằng trợ động từ (Do/Have/Can/Could/Would...) + Chủ ngữ + Động từ nguyên mẫu."
+                        ? "Đây là câu hỏi giao tiếp thực tế: Hãy đảo trợ động từ hoặc To be (Do/Does/Did/Is/Are/Can/Would...) lên trước chủ ngữ."
                         : "Xác định rõ mệnh đề chính (Chủ ngữ + Động từ chia theo thì) và liên từ nối hai vế câu (so, because, to, when...) sao cho tự nhiên.";
                 }
             }
 
-            // 2. Mức 3: Gợi ý cách tạo câu (Khung lắp ghép câu)
             let constructionHint = question.constructionHint || "";
             if (!constructionHint) {
                 const words = question.sampleCasual.split(' ');
                 const masked = words.map((w, idx) => {
-                    // Giữ lại các từ đầu câu, từ nối và cấu trúc chính, ẩn bớt từ ở giữa để người học tự ghép
                     if (idx < 2 || idx === words.length - 1 || w.length <= 3 || idx % 2 === 0) return w;
                     return '<span class="text-indigo-500 font-mono">___</span>';
                 }).join(' ');
@@ -48,7 +44,6 @@
                 `;
             }
 
-            // 3. Các cách nói khác tương tự (Alternatives)
             let alternatives = question.alternatives || [];
             if (!alternatives || alternatives.length === 0) {
                 alternatives = generateAlternativeExpressions(question);
@@ -77,7 +72,6 @@
             const formal = (question.sampleFormal || "").trim();
             const sid = (question.isStructureMode && question.structureInfo) ? question.structureInfo.id : "";
 
-            // 1. Cấu trúc #1 (It takes/took + O + time + to V -> S + spend/spent + time + V-ing)
             if (sid === "struct_1" || /^it\s+(usually\s+)?(takes|took|will take|'ll take)/i.test(casual)) {
                 let m = casual.match(/^It\s+(?:usually\s+)?takes\s+me\s+(.*?)\s+to\s+(\w+)\b(.*)$/i);
                 if (m) return { label: "Cấu trúc tương đương (Spend + time + V-ing)", en: `I usually spend ${m[1]} ${toGerundPhrase(m[2])}${m[3]}` };
@@ -89,7 +83,6 @@
                 if (m) return { label: "Cấu trúc tương đương (How much time did you spend...)", en: `How much time did you spend ${toGerundPhrase(m[1])}${m[2]}` };
             }
 
-            // 2. Cấu trúc #2 (Would you mind -> Do you mind / Is it okay if I / Could you please)
             if (sid === "struct_2" || /would you (guys )?mind/i.test(casual)) {
                 if (/would you (?:guys )?mind if i/i.test(casual)) {
                     const alt = casual.replace(/Would you (?:guys )?mind if I (\w+)/i, "Is it okay with you if I $1");
@@ -99,7 +92,6 @@
                 if (alt !== casual) return { label: "Giao tiếp thân mật (Do you mind + V-ing)", en: alt };
             }
 
-            // 3. Cấu trúc #3 (Not only... but also -> Both... and / ...as well as...)
             if (sid === "struct_3" || /not only/i.test(casual)) {
                 const alt = casual
                     .replace(/not only/i, "both")
@@ -108,7 +100,6 @@
                 if (alt !== casual) return { label: "Biến thể tương đương (Both... and / As well as)", en: alt };
             }
 
-            // 4. Cấu trúc #4 (Used to / Be used to -> Be accustomed to / In the past)
             if (sid === "struct_4" || /used to/i.test(casual)) {
                 if (/am|is|are|m|s|re\s+(?:already\s+|totally\s+|still\s+not\s+)?used to/i.test(casual)) {
                     const alt = casual.replace(/used to/i, "accustomed to");
@@ -118,7 +109,6 @@
                 if (alt !== casual) return { label: "Diễn đạt thói quen xưa (Would often + V)", en: alt };
             }
 
-            // 5. Cấu trúc #5 (No matter how/what/where -> However / Whatever / Wherever)
             if (sid === "struct_5" || /no matter/i.test(casual)) {
                 const alt = casual
                     .replace(/No matter how/i, "However")
@@ -129,13 +119,11 @@
                 if (alt !== casual) return { label: "Rút gọn chuẩn bản xứ (However / Whatever / Wherever)", en: alt };
             }
 
-            // 6. Cấu trúc #6 (I wish -> If only)
             if (sid === "struct_6" || /\bi wish\b/i.test(casual)) {
                 const alt = casual.replace(/\bI wish\b/i, "If only");
                 if (alt !== casual) return { label: "Nhấn mạnh cảm xúc (If only - Giá như...)", en: alt };
             }
 
-            // 7. Cấu trúc It's high time -> It's about time
             if (/high time|about time/i.test(casual)) {
                 const alt = /high time/i.test(casual)
                     ? casual.replace(/high time/i, "about time")
@@ -143,7 +131,6 @@
                 return { label: "Biến thể tương đương (It's about/high time)", en: alt };
             }
 
-            // Mặc định biến đổi nhẹ nhàng các cụm thông dụng sang cách nói tự nhiên khác (Không dùng từ đệm sáo rỗng)
             let naturalAlt = casual
                 .replace(/^Can we /i, "Could we possibly ")
                 .replace(/^Do you have /i, "Have you got ")
@@ -166,7 +153,6 @@
             const formal = (question.sampleFormal || "").trim();
             const list = [];
 
-            // Mục 1: Cách diễn đạt Trang trọng / Công việc (Formal) nếu khác câu chuẩn Casual
             if (formal && formal.toLowerCase() !== casual.toLowerCase()) {
                 list.push({
                     label: "Trang trọng / Công việc (Formal)",
@@ -175,7 +161,6 @@
                 });
             }
 
-            // Mục 2: Biến thể cấu trúc tương đương (Sạch 100%, không chứa chữ "You can also say" hay "In fact")
             const structVar = buildCleanStructuralVariation(question);
             if (structVar && structVar.en && structVar.en.toLowerCase() !== casual.toLowerCase() && structVar.en.toLowerCase() !== formal.toLowerCase()) {
                 list.push({
@@ -185,7 +170,6 @@
                 });
             }
 
-            // Nếu câu Formal trùng câu Casual và chưa đủ 2 câu, tạo thêm 1 biến thể từ vựng sạch
             if (list.length < 2) {
                 const secondAlt = (formal || casual)
                     .replace(/approximately/i, "roughly")
@@ -217,31 +201,14 @@
             "the": "ðə", "a": "ə", "an": "æn", "this": "ðɪs", "that": "ðæt", "these": "ðiːz", "those": "ðoʊz",
             "to": "tuː", "of": "ʌv", "in": "ɪn", "on": "ɑːn", "at": "æt", "for": "fɔːr", "with": "wɪð", "from": "frʌm", "by": "baɪ", "about": "əˈbaʊt", "around": "əˈraʊnd", "into": "ˈɪntuː", "under": "ˈʌndər", "over": "ˈoʊvər", "after": "ˈæftər", "before": "bɪˈfɔːr", "prior": "ˈpraɪər", "during": "ˈdʊrɪŋ", "while": "waɪl", "within": "wɪˈðɪn", "up": "ʌp", "down": "daʊn", "out": "aʊt", "off": "ɔːf", "through": "θruː",
             "and": "ænd", "or": "ɔːr", "but": "bʌt", "so": "soʊ", "because": "bɪˈkɔːz", "if": "ɪf", "when": "wɛn", "where": "wɛr", "who": "huː", "what": "wʌt", "how": "haʊ", "as": "æz", "than": "ðæn", "though": "ðoʊ",
-            "not": "nɑːt", "no": "noʊ", "all": "ɔːl", "any": "ˈɛni", "some": "sʌm", "many": "ˈmɛni", "much": "mʌtʃ", "more": "mɔːr", "most": "moʊst", "other": "ˈʌðər", "others": "ˈʌðərz", "such": "sʌtʃ", "only": "ˈoʊnli", "also": "ˈɔːlsoʊ", "too": "tuː", "very": "ˈvɛri", "quite": "kwaɪt", "so": "soʊ", "just": "dʒʌst", "still": "stɪl", "already": "ɔːlˈrɛdi", "always": "ˈɔːlweɪz", "usually": "ˈjuːʒuəli", "typically": "ˈtɪpɪkli", "often": "ˈɔːfən", "never": "ˈnɛvər",
-            "take": "teɪk", "takes": "teɪks", "took": "tʊk", "taking": "ˈteɪkɪŋ", "spend": "spɛnd", "spends": "spɛndz", "spent": "spɛnt",
-            "minute": "ˈmɪnɪt", "minutes": "ˈmɪnɪts", "hour": "ˈaʊər", "hours": "ˈaʊərz", "day": "deɪ", "days": "deɪz", "week": "wiːk", "month": "mʌnθ", "months": "mʌnθs", "year": "jɪr", "years": "jɪrz", "morning": "ˈmɔːrnɪŋ", "afternoon": "ˌæftərˈnuːn", "tonight": "təˈnaɪt", "today": "təˈdeɪ", "today's": "təˈdeɪz", "tomorrow": "təˈmɑːroʊ", "yesterday": "ˈjɛstərdeɪ", "weekend": "ˈwiːkɛnd", "daily": "ˈdeɪli", "every": "ˈɛvri", "each": "iːtʃ", "time": "taɪm", "soon": "suːn", "lately": "ˈleɪtli", "recently": "ˈriːsəntli", "now": "naʊ",
-            "drive": "draɪv", "driving": "ˈdraɪvɪŋ", "walk": "wɔːk", "commute": "kəˈmjuːt", "commuting": "kəˈmjuːtɪŋ", "work": "wɜːrk", "working": "ˈwɜːrkɪŋ", "job": "dʒɑːb", "office": "ˈɔːfɪs", "home": "hoʊm", "company": "ˈkʌmpəni", "company's": "ˈkʌmpəniz", "business": "ˈbɪznəs", "startup": "ˈstɑːrtʌp", "project": "ˈprɑːdʒɛkt", "meeting": "ˈmiːtɪŋ", "meetings": "ˈmiːtɪŋz", "presentation": "ˌprɛzənˈteɪʃən", "report": "rɪˈpɔːrt", "email": "ˈiːmeɪl", "documents": "ˈdɑːkjumənts", "proposal": "prəˈpoʊzəl", "schedule": "ˈskɛdʒuːl", "target": "ˈtɑːrɡɪt", "targets": "ˈtɑːrɡɪts", "plan": "plæn", "plans": "plænz", "strategy": "ˈstrætədʒi", "workflow": "ˈwɜːrkfloʊ",
-            "mind": "maɪnd", "open": "ˈoʊpən", "opening": "ˈoʊpənɪŋ", "window": "ˈwɪndoʊ", "room": "ruːm", "stuffy": "ˈstʌfi", "here": "hɪr", "there": "ðɛr", "there's": "ðɛrz", "please": "pliːz", "sorry": "ˈsɑːri", "excuse": "ɪkˈskjuːz", "apologize": "əˈpɑːlədʒaɪz",
-            "sit": "sɪt", "sat": "sæt", "seat": "siːt", "empty": "ˈɛmpti", "vacant": "ˈveɪkənt", "repeat": "rɪˈpiːt", "repeating": "rɪˈpiːtɪŋ", "said": "sɛd", "slowly": "ˈsloʊli", "music": "ˈmjuːzɪk", "loud": "laʊd", "loudly": "ˈlaʊdli", "playing": "ˈpleɪɪŋ",
-            "send": "sɛnd", "sending": "ˈsɛndɪŋ", "resending": "ˌriːˈsɛndɪŋ", "link": "lɪŋk", "latest": "ˈleɪtɪst", "design": "dɪˈzaɪn", "again": "əˈɡɛn", "record": "rɪˈkɔːrd", "recorded": "rɪˈkɔːrdɪd", "notes": "noʊts", "prepare": "prɪˈpɛr",
-            "photo": "ˈfoʊtoʊ", "picture": "ˈpɪktʃər", "photograph": "ˈfoʊtəɡræf", "group": "ɡruːp", "front": "frʌnt", "building": "ˈbɪldɪŋ", "buildings": "ˈbɪldɪŋz", "suitcase": "ˈsuːtkeɪs", "water": "ˈwɔːtər", "grab": "ɡræb", "watch": "wɑːtʃ", "watching": "ˈwɑːtʃɪŋ", "keeping": "ˈkiːpɪŋ", "eye": "aɪ",
-            "friday": "ˈfraɪdeɪ", "family": "ˈfæməli", "matter": "ˈmætər", "urgent": "ˈɜːrdʒənt", "leave": "liːv", "handle": "ˈhændəl", "review": "rɪˈvjuː", "reviewing": "rɪˈvjuːɪŋ", "looking": "ˈlʊkɪŋ", "feedback": "ˈfiːdbæk", "honest": "ˈɑːnɪst", "candid": "ˈkændɪd",
-            "beautiful": "ˈbjuːtɪfəl", "pretty": "ˈprɪti", "smart": "smɑːrt", "intelligent": "ɪnˈtɛlɪdʒənt", "kind": "kaɪnd", "fluent": "ˈfluːənt", "fluently": "ˈfluːəntli", "proficient": "prəˈfɪʃənt", "english": "ˈɪŋɡlɪʃ", "japanese": "ˌdʒæpəˈniːz", "speak": "spiːk", "speaks": "spiːks", "know": "noʊ", "knows": "noʊz",
-            "app": "æp", "application": "ˌæplɪˈkeɪʃən", "save": "seɪv", "saves": "seɪvz", "cost": "kɔːst", "costs": "kɔːsts", "reduces": "rɪˈduːsɪz", "cuts": "kʌts",
-            "restaurant": "ˈrɛstərɑːnt", "food": "fuːd", "cuisine": "kwɪˈziːn", "delicious": "dɪˈlɪʃəs", "great": "ɡreɪt", "service": "ˈsɜːrvɪs", "awesome": "ˈɔːsəm", "customer": "ˈkʌstəmər",
-            "late": "leɪt", "arrived": "əˈraɪvd", "showed": "ʃoʊd", "forgot": "fərˈɡɑːt", "bring": "brɪŋ", "exercise": "ˈɛksərsaɪz", "regular": "ˈrɛɡjələr", "regularly": "ˈrɛɡjələrli", "improves": "ɪmˈpruːvz", "physical": "ˈfɪzɪkəl", "health": "hɛlθ", "stress": "strɛs", "relieves": "rɪˈliːvz",
-            "requires": "rɪˈkwaɪərz", "demands": "dɪˈmændz", "technical": "ˈtɛknɪkəl", "knowledge": "ˈnɑːlɪdʒ", "communication": "kəˌmjuːnɪˈkeɪʃən", "skills": "skɪlz", "strong": "strɔːŋ", "good": "ɡʊd",
-            "finish": "ˈfɪnɪʃ", "complete": "kəmˈpliːt", "ahead": "əˈhɛd", "beat": "biːt", "exceeded": "ɪkˈsiːdɪd", "automate": "ˈɔːtəmeɪt", "tasks": "tæsks", "people": "ˈpiːpəl", "create": "kriˈeɪt", "faster": "ˈfæstər", "grow": "ɡroʊ", "expand": "ɪkˈspænd", "market": "ˈmɑːrkɪt", "share": "ʃɛr", "trust": "trʌst", "lasting": "ˈlæstɪŋ", "builds": "bɪldz",
-            "used": "juːst", "use": "juːs", "accustomed": "əˈkʌstəmd", "college": "ˈkɑːlɪdʒ", "university": "ˌjuːnɪˈvɜːrsəti", "stay": "steɪ", "studying": "ˈstʌdiɪŋ", "exams": "ɪɡˈzæmz", "drink": "drɪŋk", "coffee": "ˈkɔːfi", "cups": "kʌps", "three": "θriː", "two": "tuː", "five": "faɪv", "ten": "tɛn", "thirty": "ˈθɜːrti", "30": "ˈθɜːrti", "45": "ˈfɔːrti faɪv", "10": "tɛn", "3": "θriː", "2": "tuː",
-            "waking": "ˈweɪkɪŋ", "early": "ˈɜːrli", "manager": "ˈmænɪdʒər", "pressure": "ˈprɛʃər", "high": "haɪ", "moved": "muːvd", "japan": "dʒəˈpæn", "train": "treɪn", "left": "lɛft", "side": "saɪd", "road": "roʊd", "uk": "ˌjuːˈkeɪ", "worry": "ˈwɜːri", "cold": "koʊld", "weather": "ˈwɛðər", "north": "nɔːrθ", "hate": "heɪt", "dislike": "dɪsˈlaɪk", "remotely": "rɪˈmoʊtli", "productive": "prəˈdʌktɪv", "find": "faɪnd",
-            "busy": "ˈbɪzi", "makes": "meɪks", "dinner": "ˈdɪnər", "happens": "ˈhæpənz", "support": "səˈpɔːrt", "decision": "dɪˈsɪʒən", "hard": "hɑːrd", "tried": "traɪd", "explain": "ɪkˈspleɪn", "understand": "ˌʌndərˈstænd", "listen": "ˈlɪsən", "travel": "ˈtrævəl", "forget": "fərˈɡɛt", "passport": "ˈpæspɔːrt", "insurance": "ɪnˈʃʊrəns",
-            "difficult": "ˈdɪfɪkəlt", "tough": "tʌf", "challenge": "ˈtʃælɪndʒ", "team": "tiːm", "overcome": "ˌoʊvərˈkʌm", "together": "təˈɡɛðər", "follow": "ˈfɑːloʊ", "safety": "ˈseɪfti", "rules": "ruːlz", "regulations": "ˌrɛɡjuˈleɪʃənz", "career": "kəˈrɪr", "profession": "prəˈfɛʃən", "choose": "tʃuːz", "success": "səkˈsɛs", "key": "kiː", "expensive": "ɪkˈspɛnsɪv", "costly": "ˈkɔːstli", "determined": "dɪˈtɜːrmɪnd", "buy": "baɪ", "purchase": "ˈpɜːrtʃəs", "call": "kɔːl", "available": "əˈveɪləbəl", "line": "laɪn", "hotline": "ˈhɑːtlaɪn", "perfect": "ˈpɜːrfɪkt", "flawless": "ˈflɔːləs", "initial": "ɪˈnɪʃəl", "need": "niːd", "backup": "ˈbækʌp", "contingency": "kənˈtɪndʒənsi",
-            "wish": "wɪʃ", "free": "friː", "leisure": "ˈliːʒər", "read": "riːd", "books": "bʊks", "relax": "rɪˈlæks", "unwind": "ʌnˈwaɪnd", "native": "ˈneɪtɪv", "speaker": "ˈspiːkər", "come": "kʌm", "attend": "əˈtɛnd", "birthday": "ˈbɜːrθdeɪ", "party": "ˈpɑːrti", "shift": "ʃɪft", "duty": "ˈduːti", "new": "nuː", "closer": "ˈkloʊsər", "station": "ˈsteɪʃən", "subway": "ˈsʌbweɪ", "railway": "ˈreɪlweɪ", "airport": "ˈɛrpɔːrt", "bus": "bʌs", "last": "læst", "final": "ˈfaɪnəl", "missed": "mɪst", "miss": "mɪs",
-            "double-checked": "ˈdʌbəl tʃɛkt", "hitting": "ˈhɪtɪŋ", "bought": "bɔːt", "purchased": "ˈpɜːrtʃəst", "pricey": "ˈpraɪsi", "jacket": "ˈdʒækɪt", "suit": "suːt", "raining": "ˈreɪnɪŋ", "rain": "reɪn", "heavy": "ˈhɛvi", "stop": "stɑːp", "go": "ɡoʊ", "get": "ɡɛt", "got": "ɡɑːt", "coworker": "ˈkoʊwɜːrkər", "colleague": "ˈkɑːliːɡ", "interrupt": "ˌɪntəˈrʌpt", "started": "ˈstɑːrtɪd", "begun": "bɪˈɡʌn", "learning": "ˈlɜːrnɪŋ", "coding": "ˈkoʊdɪŋ", "programming": "ˈproʊɡræmɪŋ", "school": "skuːl", "back": "bæk", "one": "wʌn", "polish": "ˈpɑːlɪʃ", "refine": "rɪˈfaɪn", "product": "ˈprɑːdʌkt", "official": "əˈfɪʃəl", "launch": "lɔːntʃ",
-            "fix": "fɪks", "resolve": "rɪˈzɑːlv", "computer": "kəmˈpjuːtər", "bug": "bʌɡ", "issue": "ˈɪʃuː", "issues": "ˈɪʃuːz", "whole": "hoʊl", "full": "fʊl", "deliver": "dɪˈlɪvər", "package": "ˈpækɪdʒ", "address": "əˈdrɛs", "approximately": "əˈprɑːksɪmətli", "roughly": "ˈrʌfli", "nearly": "ˈnɪrli", "half": "hæf", "lot": "lɑːt", "patience": "ˈpeɪʃəns", "master": "ˈmæstər", "language": "ˈlæŋɡwɪdʒ", "foreign": "ˈfɔːrən", "long": "lɔːŋ", "longer": "ˈlɔːŋɡər", "expected": "ɪkˈspɛktɪd", "anticipated": "ænˈtɪsɪpeɪtɪd", "extra": "ˈɛkstrə", "additional": "əˈdɪʃənəl", "reach": "riːtʃ", "software": "ˈsɔːftwɛr", "seconds": "ˈsɛkəndz", "few": "fjuː", "export": "ɪkˈspɔːrt", "courage": "ˈkɜːrɪdʒ", "quit": "kwɪt", "stable": "ˈsteɪbəl"
+            "not": "nɑːt", "no": "noʊ", "all": "ɔːl", "any": "ˈɛni", "some": "sʌm", "many": "ˈmɛni", "much": "mʌtʃ", "more": "mɔːr", "most": "moʊst", "other": "ˈʌðər", "others": "ˈʌðərz", "such": "sʌtʃ", "only": "ˈoʊnli", "also": "ˈɔːlsoʊ", "too": "tuː", "very": "ˈvɛri", "quite": "kwaɪt", "just": "dʒʌst", "still": "stɪl", "already": "ɔːlˈrɛdi", "always": "ˈɔːlweɪz", "usually": "ˈjuːʒuəli", "typically": "ˈtɪpɪkli", "often": "ˈɔːfən", "never": "ˈnɛvər",
+            "isn't": "ˈɪzənt", "aren't": "ɑːrnt", "wasn't": "ˈwɑːzənt", "weren't": "wɜːrnt", "doctor": "ˈdɑːktər", "nurse": "nɜːrs", "student": "ˈstuːdənt", "students": "ˈstuːdənts", "national": "ˈnæʃənəl", "university": "ˌjuːnɪˈvɜːrsəti"
         };
 
         function fallbackWordToIPA(word) {
+            if (typeof window.VA_DICTIONARY_CORE === 'object' && window.VA_DICTIONARY_CORE && window.VA_DICTIONARY_CORE[word]?.ipa) {
+                return window.VA_DICTIONARY_CORE[word].ipa.replace(/^\/|\/$/g, '');
+            }
             let w = word.toLowerCase();
             w = w.replace(/tion$/g, 'ʃən')
                  .replace(/sion$/g, 'ʒən')
@@ -280,14 +247,13 @@
             return `/${ipaWords.join(' ').replace(/\s+/g, ' ').trim()}/`;
         }
 
-        // Phát âm câu trả lời chuẩn ngay trên thẻ câu hỏi (Ưu tiên file MP3 trong audio/<id>.mp3, tự lùi về Web Speech API nếu chưa có file)
         function speakTargetAnswer(rate = 0.95, btnEl = null) {
             const question = getActiveQuestionObject();
             if (!question) return;
             speakText(question.sampleCasual, btnEl, rate, { audioId: question.id });
         }
 
-        // 4. HỆ THỐNG CHẤM ĐIỂM TẦNG 1 (OFFLINE 0Đ • WORD-LEVEL DIFF + 3 TRẠNG THÁI + CHẶT TỪ NGUYÊN TỪ & CÂU HỎI)
+        // ==================== 4. HỆ THỐNG CHẤM CHẶT ĐA ĐÁP ÁN & WORD DIFF ====================
         const CONTRACTION_EXPANSION_MAP = {
             "i'm": ["i", "am"], "you're": ["you", "are"], "he's": ["he", "is"], "she's": ["she", "is"],
             "it's": ["it", "is"], "we're": ["we", "are"], "they're": ["they", "are"],
@@ -305,7 +271,6 @@
             "here's": ["here", "is"], "how's": ["how", "is"], "when's": ["when", "is"], "why's": ["why", "is"]
         };
 
-        // Nhóm từ đồng nghĩa phổ biến A1–B1 để chấm Offline công bằng hơn
         const OFFLINE_SYNONYM_GROUPS = [
             ["hi", "hello", "hey"],
             ["big", "large", "huge"],
@@ -326,7 +291,6 @@
             ["very", "really", "quite", "so"],
             ["job", "occupation", "work"],
             ["chef", "cook"],
-            ["best", "close"],
             ["tv", "television"],
             ["phone", "cellphone", "mobile"],
             ["wifi", "wi-fi"],
@@ -358,13 +322,10 @@
             "15": "fifteen", "20": "twenty", "30": "thirty", "45": "forty-five", "60": "sixty"
         };
 
-        const DIFF_MINOR_WORDS = new Set(["a", "an", "the", "to", "of", "in", "on", "at", "for", "and", "or", "is", "am", "are"]);
-
         function escapeRegexPattern(str) {
             return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        // So khớp NGUYÊN TỪ / NGUYÊN CỤM TỪ theo ranh giới từ (Tuyệt đối không khớp chuỗi con như "representation" chứa "presentation" hay "takes" chứa "take")
         function hasExactWholeWordOrPhrase(haystack, needle) {
             const h = (haystack || '').toLowerCase().trim();
             const n = (needle || '').toLowerCase().trim();
@@ -422,21 +383,16 @@
             return dp[m][n];
         }
 
-        // Kiểm tra nghiêm ngặt lỗi gõ nhầm chính tả nhẹ (tránh nhầm từ khác nghĩa như representation vs presentation, hoặc chia sai động từ takes vs take)
         function isStrictLightTypo(userWord, targetWord) {
-            if (!userWord || !targetWord) return false;
-            if (userWord === targetWord) return false;
-            // Phải có độ dài tối thiểu 5 ký tự và cùng chữ cái đầu tiên (loại trừ sai tiền tố như re-presentation vs presentation)
+            if (!userWord || !targetWord || userWord === targetWord) return false;
             if (userWord.length < 5 || targetWord.length < 5) return false;
             if (userWord[0] !== targetWord[0]) return false;
-            // Loại trừ lỗi chia sai số nhiều / ngôi 3 số ít (-s / -d)
             if (userWord === targetWord + 's' || targetWord === userWord + 's') return false;
             if (userWord === targetWord + 'd' || targetWord === userWord + 'd') return false;
-            // Chỉ chấp nhận tối đa đúng 1 lỗi ký tự (Levenshtein = 1)
             return calcLevenshteinDistance(userWord, targetWord) === 1;
         }
 
-        // Thuật toán Word-level Diff (LCS Alignment + Phát hiện sai chính tả nhẹ chặt chẽ)
+        // Thuật toán Word-level Diff: Tách bạch rõ Từ sai/thừa vs Sai trật tự từ vs Từ còn thiếu (không bao giờ báo mâu thuẫn!)
         function computeWordLevelDiff(userText, refText) {
             const uData = tokenizeToExpandedAtoms(userText);
             const rData = tokenizeToExpandedAtoms(refText);
@@ -472,6 +428,9 @@
                 }
             }
 
+            const refNormSet = new Set(rAtoms.map(a => a.norm));
+            const userNormSet = new Set(uAtoms.map(a => a.norm));
+
             const userTokenStatus = uData.rawTokens.map((raw, origIdx) => {
                 const atomIndices = [];
                 uAtoms.forEach((a, idx) => {
@@ -479,10 +438,15 @@
                 });
                 const matchedCount = atomIndices.filter(idx => matchedUserAtomIdx.has(idx)).length;
                 const isExactMatch = atomIndices.length > 0 && matchedCount === atomIndices.length;
+                const normStr = atomIndices.map(idx => uAtoms[idx].norm).join(' ');
+
+                // Nếu từ này có trong câu đáp án nhưng bị xếp sai chỗ -> đánh dấu 'misplaced'
+                const isMisplaced = !isExactMatch && atomIndices.length > 0 && atomIndices.every(idx => refNormSet.has(uAtoms[idx].norm));
+
                 return {
                     raw,
-                    norm: atomIndices.map(idx => uAtoms[idx].norm).join(' '),
-                    status: isExactMatch ? 'match' : 'wrong',
+                    norm: normStr,
+                    status: isExactMatch ? 'match' : (isMisplaced ? 'misplaced' : 'wrong'),
                     suggestion: ''
                 };
             });
@@ -495,7 +459,6 @@
                 }
             });
 
-            // Bước 2: Chỉ gắn nhãn typo (màu vàng) khi thỏa điều kiện chặt isStrictLightTypo
             let typoCount = 0;
             userTokenStatus.forEach(tok => {
                 if (tok.status !== 'wrong' || tok.norm.includes(' ')) return;
@@ -511,11 +474,22 @@
             });
 
             const missingWords = [];
+            const misplacedWords = [];
             const seenMissing = new Set();
+            const seenMisplaced = new Set();
+
             unmatchedRefTokens.forEach(cand => {
                 if (refAtomUsedByTypo.has(cand.idx)) return;
                 const cleanDisp = cand.raw.replace(/^[^a-zA-Z0-9']+|[^a-zA-Z0-9']+$/g, '');
-                if (cleanDisp && !seenMissing.has(cand.norm)) {
+                if (!cleanDisp) return;
+
+                // Nếu từ đã có trong câu người dùng viết nhưng sai chỗ -> đưa vào misplacedWords, KHÔNG đưa vào missingWords!
+                if (userNormSet.has(cand.norm)) {
+                    if (!seenMisplaced.has(cand.norm)) {
+                        seenMisplaced.add(cand.norm);
+                        misplacedWords.push(cleanDisp);
+                    }
+                } else if (!seenMissing.has(cand.norm)) {
                     seenMissing.add(cand.norm);
                     missingWords.push(cleanDisp);
                 }
@@ -525,14 +499,17 @@
             const denom = Math.max(m, n, 1);
             const ratio = Math.min(1, (matchedAtoms + typoCount * 0.7) / denom);
             const wrongCount = userTokenStatus.filter(t => t.status === 'wrong').length;
+            const misplacedCount = userTokenStatus.filter(t => t.status === 'misplaced').length;
 
             return {
                 refText,
                 userTokens: userTokenStatus,
                 missingWords,
+                misplacedWords,
                 matchedAtoms,
                 typoCount,
                 wrongCount,
+                misplacedCount,
                 ratio
             };
         }
@@ -545,7 +522,6 @@
                 .replace(/"/g, '&quot;');
         }
 
-        // Chuyển điểm ngầm + isPassed thành 3 Trạng thái chuẩn (excellent | passed | retry)
         function resolveVerdictTier(score, isPassed) {
             if (!isPassed || score < 7.0) return 'retry';
             if (score >= 9.0) return 'excellent';
@@ -557,81 +533,70 @@
             const sample = (question.sampleCasual || "").toLowerCase().trim();
             const isQuestionPrompt = (question.vi || "").trim().endsWith("?") || sample.endsWith("?");
 
-            // Kiểm tra chung cho dạng Câu hỏi khi không ở Structure mode
-            if (!question.isStructureMode || !question.structureInfo) {
-                if (isQuestionPrompt && /^how\s+long\b/i.test(sample)) {
+            // Kiểm tra đảo ngữ câu hỏi tổng quát (áp dụng cho cả chế độ Cấu trúc lẫn Chủ đề)
+            if (isQuestionPrompt) {
+                if (/^how\s+long\b/i.test(sample)) {
                     const hasAux = /\bhow\s+long\s+(do|does|did|will|would|can|could|have|has|had|is|are|was|were)\b/i.test(userExpandedText);
                     if (!hasAux) {
                         return { valid: false, partial: false, reason: "Câu hỏi với 'How long' cần đảo trợ động từ (do/does/did/will/can...) lên trước chủ ngữ." };
                     }
                 }
+                const sampleExpanded = tokenizeToExpandedAtoms(sample).atoms.map(a => a.norm).join(' ');
+                if (/^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had)\b/i.test(sampleExpanded)) {
+                    const startsWithQuestionInversion = /^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had|what|where|when|who|why|how|which|isn't|aren't|wasn't|weren't|don't|doesn't|didn't|won't|can't|couldn't|wouldn't|shouldn't)\b/i.test(cleanUser);
+                    if (!startsWithQuestionInversion) {
+                        return {
+                            valid: false,
+                            partial: true,
+                            reason: "Đây là câu hỏi — bạn cần đảo động từ To be hoặc trợ động từ (Is, Are, Isn't, Do, Does...) lên đầu câu, không giữ trật tự câu khẳng định."
+                        };
+                    }
+                }
+            }
+
+            if (!question.isStructureMode || !question.structureInfo) {
                 return { valid: true, partial: false, reason: "" };
             }
 
             const sid = question.structureInfo.id;
 
-            // Cấu trúc #1: It takes / took / will take + (O) + [time] + to V & Câu hỏi How long does/did/will it take...
             if (sid === "struct_1") {
                 if (/^how\s+long\b/i.test(sample)) {
-                    const hasHowLong = /\bhow\s+long\b/i.test(userExpandedText);
-                    if (!hasHowLong) {
-                        return { valid: false, partial: false, reason: "Câu hỏi về thời gian này cần bắt đầu bằng 'How long...'." };
-                    }
                     const validQuestionInversion = /\bhow\s+long\s+(does|did|will|would|can|could)\s+it\s+take\b/i.test(userExpandedText);
                     const validSpendQuestion = /\bhow\s+(much\s+time|long)\s+(do|does|did|will)\s+\w+\s+spend\b/i.test(userExpandedText);
                     if (!validQuestionInversion && !validSpendQuestion) {
-                        return {
-                            valid: false,
-                            partial: true,
-                            reason: "Thiếu trợ động từ đảo ngữ trong câu hỏi! Công thức chuẩn là 'How long did/does/will it take + (someone) + to V?' (không dùng 'How long it takes')."
-                        };
+                        return { valid: false, partial: true, reason: "Thiếu trợ động từ đảo ngữ: 'How long did/does/will it take + (someone) + to V?'." };
                     }
-                } else {
-                    const hasTake = /\b(take|takes|took|taking)\b/i.test(cleanUser);
-                    if (!hasTake) {
-                        return { valid: false, partial: false, reason: "Bạn chưa dùng động từ 'take / takes / took' của cấu trúc mục tiêu." };
-                    }
+                } else if (!/\b(take|takes|took|taking)\b/i.test(cleanUser)) {
+                    return { valid: false, partial: false, reason: "Bạn chưa dùng động từ 'take / takes / took' của cấu trúc mục tiêu." };
                 }
-
                 if (/\bto\s+\w+/i.test(sample) && !/\bto\s+[a-z]+/i.test(cleanUser)) {
-                    return { valid: false, partial: true, reason: "Thiếu giới từ 'to' trước động từ nguyên mẫu (Công thức chuẩn: It takes + [thời gian] + to V)." };
-                }
-                const badOrder = /\b(takes|took)\s+(master|drive|walk|fix|finish|complete|learn|reach|get|make|prepare|deliver)\b/i.test(cleanUser);
-                if (badOrder) {
-                    return { valid: false, partial: true, reason: "Sai trật tự cấu trúc: Sau 'It takes/took' phải là [thời gian/công sức] trước, rồi mới đến 'to + V'." };
+                    return { valid: false, partial: true, reason: "Thiếu giới từ 'to' trước động từ nguyên mẫu (It takes + [thời gian] + to V)." };
                 }
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Cấu trúc #2: Would you mind + V-ing / if I + V-ed
             if (sid === "struct_2") {
                 if (!/\b(would|do)\s+you\s+(guys\s+)?mind\b/i.test(cleanUser)) {
                     return { valid: false, partial: /\bmind\b/i.test(cleanUser), reason: "Câu nhờ vả/xin phép lịch sự cần đảo ngữ 'Would you mind...' hoặc 'Do you mind...'." };
                 }
-                if (/mind\s+if\b/i.test(sample) && !/mind\s+if\b/i.test(cleanUser)) {
-                    return { valid: false, partial: true, reason: "Tình huống xin phép này cần dùng 'Would you mind if I/we + V-ed'." };
-                }
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Cấu trúc #3: Not only ... but also
             if (sid === "struct_3") {
                 if (!/\bnot\s+only\b/i.test(cleanUser) || !/\b(but|also)\b/i.test(cleanUser)) {
-                    const hasOne = /\bnot\s+only\b/i.test(cleanUser);
-                    return { valid: false, partial: hasOne, reason: "Cấu trúc này yêu cầu đủ cặp liên từ 'not only ... but (also) ...'." };
+                    return { valid: false, partial: /\bnot\s+only\b/i.test(cleanUser), reason: "Cấu trúc này yêu cầu đủ cặp liên từ 'not only ... but (also) ...'." };
                 }
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Cấu trúc #4: Used to V / Be used to V-ing
             if (sid === "struct_4") {
                 if (!/\bused?\s+to\b/i.test(cleanUser)) {
-                    return { valid: false, partial: false, reason: "Bạn chưa sử dụng cụm 'used to' (hoặc 'use to' ở câu phủ định/nghi vấn)." };
+                    return { valid: false, partial: false, reason: "Bạn chưa sử dụng cụm 'used to' (hoặc 'use to')." };
                 }
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Cấu trúc #5: No matter how/what/where...
             if (sid === "struct_5") {
                 if (!/(\bno\s+matter\s+(how|what|where|who|when|which)\b|\b(however|whatever|wherever|whoever|whenever)\b)/i.test(cleanUser)) {
                     return { valid: false, partial: false, reason: "Cấu trúc này cần mở đầu mệnh đề bằng 'No matter + how/what/where/who/when' (hoặc However/Whatever)." };
@@ -639,7 +604,6 @@
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Cấu trúc #6: I wish + S + V-ed / had V3 / would V
             if (sid === "struct_6") {
                 if (!/(\bwish\b|\bif\s+only\b)/i.test(cleanUser)) {
                     return { valid: false, partial: false, reason: "Bạn chưa sử dụng 'I wish' (hoặc 'If only') cho câu ước." };
@@ -647,7 +611,6 @@
                 return { valid: true, partial: false, reason: "" };
             }
 
-            // Các cấu trúc tùy chỉnh / Chặng 1–8: kiểm tra khớp requiredPatterns (có mở rộng viết tắt) + kiểm tra thể Phủ định / Nghi vấn
             if (Array.isArray(question.structureInfo.requiredPatterns) && question.structureInfo.requiredPatterns.length > 0) {
                 const matchedPat = question.structureInfo.requiredPatterns.some(pat => {
                     const patExpanded = tokenizeToExpandedAtoms(pat).atoms.map(a => a.norm).join(' ');
@@ -660,64 +623,49 @@
                 }
             }
 
-            // Kiểm tra bổ sung thể Phủ định (-) cho câu phủ định rõ ràng
-            const isNegPrompt = question.form === 'negative' || /(not|no|never)/i.test(tokenizeToExpandedAtoms(sample).atoms.map(a => a.norm).join(' '));
-            if (isNegPrompt && !/(not|no|never)/i.test(userExpandedText)) {
+            const isNegPrompt = question.form === 'negative' || /\b(not|no|never)\b/i.test(tokenizeToExpandedAtoms(sample).atoms.map(a => a.norm).join(' '));
+            if (isNegPrompt && !/\b(not|no|never)\b/i.test(userExpandedText)) {
                 return { valid: false, partial: true, reason: "Câu đề bài mang nghĩa phủ định nhưng câu dịch của bạn chưa có từ phủ định (not / n't / no)." };
-            }
-
-            // Kiểm tra bổ sung đảo ngữ cơ bản cho câu hỏi Yes/No (?)
-            if (isQuestionPrompt && /^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had)/i.test(sample)) {
-                const startsWithQuestionWord = /^(am|is|are|was|were|do|does|did|can|could|will|would|have|has|had|what|where|when|who|why|how|which|isn't|aren't|don't|doesn't|didn't)/i.test(cleanUser);
-                if (!startsWithQuestionWord) {
-                    return { valid: false, partial: true, reason: "Đây là câu hỏi — bạn cần đảo trợ động từ / To be (Is, Are, Do, Does...) lên đầu câu." };
-                }
             }
 
             return { valid: true, partial: false, reason: "" };
         }
 
-        // Kiểm tra Hình thức câu chuẩn (1.0đ = 0.5đ Viết hoa đầu câu + 0.5đ Dấu kết thúc câu)
         function checkSentenceFormat(userText, question) {
             const trimmed = (userText || "").trim();
             const issues = [];
             let formatScore = 0;
 
-            const startsWithCap = /^[A-Z]/.test(trimmed);
-            if (startsWithCap) {
+            if (/^[A-Z]/.test(trimmed)) {
                 formatScore += 0.5;
             } else {
-                issues.push("Chưa viết hoa chữ cái đầu câu");
+                issues.push("chưa viết hoa chữ cái đầu câu");
             }
 
             const promptIsQuestion = (question.vi || "").trim().endsWith("?") || (question.sampleCasual || "").trim().endsWith("?");
-            const endsWithQuestion = trimmed.endsWith("?");
-            const endsWithValidPunc = /[.!?]$/.test(trimmed);
-
             if (promptIsQuestion) {
-                if (endsWithQuestion) {
+                if (trimmed.endsWith("?")) {
                     formatScore += 0.5;
                 } else {
-                    issues.push("Câu hỏi cần kết thúc bằng dấu hỏi chấm (?)");
+                    issues.push("câu hỏi cần có dấu chấm hỏi (?) ở cuối");
                 }
-            } else if (endsWithValidPunc) {
+            } else if (/[.!?]$/.test(trimmed)) {
                 formatScore += 0.5;
             } else {
-                issues.push("Thiếu dấu câu kết thúc (., ?, !)");
+                issues.push("thiếu dấu câu kết thúc (., ?, !)");
             }
 
             return { formatScore, issues };
         }
 
-        // Thuật toán chấm điểm Tầng 1 (Điểm ngầm 4 thành phần -> Hiển thị 3 Trạng thái: Chuẩn xác / Đạt - Góp ý nhẹ / Chưa đạt)
+        // Bộ chấm điểm Offline tinh gọn: So khớp chặt đa đáp án (Strict Multi-Answer)
         function localSmartEvaluator(question, userText) {
             const trimmedUser = (userText || "").trim();
             const cleanUser = trimmedUser.toLowerCase().replace(/[’‘`]/g, "'").replace(/[.,!?;:"()]/g, ' ').replace(/\s+/g, ' ').trim();
             const userExpandedAtoms = tokenizeToExpandedAtoms(trimmedUser).atoms;
             const userExpandedText = userExpandedAtoms.map(a => a.norm).join(' ');
-            const userWords = cleanUser.split(/\s+/).filter(Boolean);
 
-            // Thu thập toàn bộ đáp án tham chiếu hợp lệ (Casual, Formal, Alternatives) để chọn bản khớp nhất
+            // Gom toàn bộ đáp án chuẩn chấp nhận được (Casual, Formal, Alternatives)
             const pedagogy = buildRichPedagogyData(question);
             const candidateRefs = [];
             if (question.sampleCasual) candidateRefs.push(question.sampleCasual);
@@ -734,180 +682,70 @@
                 }
             }
 
-            // 1. THÀNH PHẦN 1: Cấu trúc mục tiêu & Ngữ pháp câu hỏi (3.0đ ngầm)
             const syntaxCheck = verifyStrictStructureSyntax(question, cleanUser, userExpandedText);
             const usedTargetStructure = syntaxCheck.valid;
-            let structureScore = 0;
-            if (question.isStructureMode) {
-                structureScore = syntaxCheck.valid ? 3.0 : (syntaxCheck.partial ? 1.0 : 0.0);
-            } else {
-                structureScore = (!syntaxCheck.valid)
-                    ? 0.5
-                    : ((userWords.length >= 3 && bestDiff.ratio >= 0.35)
-                        ? Math.min(3.0, Math.round(bestDiff.ratio * 3.5 * 10) / 10)
-                        : (bestDiff.ratio > 0.15 ? 1.0 : 0.0));
-            }
-
-            // 2. THÀNH PHẦN 2: Từ vựng & Ý chính (So khớp NGUYÊN TỪ theo ranh giới từ — không khớp chuỗi con!)
-            const rawKeywords = Array.isArray(question.keywords) && question.keywords.length > 0
-                ? question.keywords
-                : tokenizeToExpandedAtoms(bestDiff.refText).atoms.map(a => a.norm).filter(w => w.length >= 4 && !DIFF_MINOR_WORDS.has(w)).slice(0, 5);
-
-            let kwCredit = 0;
-            let matchedKwExactCount = 0;
-            const missingKeywords = [];
-            const typoKeywords = [];
-            const uNormWords = userExpandedAtoms.map(a => a.norm);
-
-            rawKeywords.forEach(kw => {
-                const kwClean = kw.toLowerCase().trim();
-                const kwExpanded = tokenizeToExpandedAtoms(kwClean).atoms.map(a => a.norm).join(' ');
-                const exactHit = hasExactWholeWordOrPhrase(cleanUser, kwClean)
-                    || (kwExpanded && hasExactWholeWordOrPhrase(userExpandedText, kwExpanded));
-                const synHit = !exactHit && !kwClean.includes(' ') && uNormWords.some(uw => areWordsSynonyms(uw, kwExpanded || kwClean));
-
-                if (exactHit || synHit) {
-                    kwCredit += 1.0;
-                    matchedKwExactCount++;
-                } else if (!kwClean.includes(' ') && kwClean.length >= 5) {
-                    // Chỉ chấp nhận lỗi gõ nhầm chính tả nhẹ theo chuẩn chặt isStrictLightTypo
-                    const nearMatch = uNormWords.find(uw => isStrictLightTypo(uw, kwClean));
-                    if (nearMatch) {
-                        kwCredit += 0.75;
-                        typoKeywords.push(`"${nearMatch}" → "${kwClean}"`);
-                    } else {
-                        missingKeywords.push(kw);
-                    }
-                } else {
-                    missingKeywords.push(kw);
-                }
-            });
-
-            // Nếu học viên khớp rất sát với bản Formal hoặc Alternative (>= 85%), không trừ điểm từ khóa oan theo bản Casual
-            let keywordRatio = rawKeywords.length > 0 ? (kwCredit / rawKeywords.length) : bestDiff.ratio;
-            if (bestDiff.ratio >= 0.85 && keywordRatio < bestDiff.ratio) {
-                keywordRatio = bestDiff.ratio;
-            }
-            const keywordScore = Math.round(keywordRatio * 3.5 * 100) / 100;
-
-            // 3. THÀNH PHẦN 3: Độ khớp từng từ Word-Diff / LCS (2.5đ ngầm)
-            const diffScore = Math.round(bestDiff.ratio * 2.5 * 100) / 100;
-
-            // 4. THÀNH PHẦN 4: Hình thức câu chuẩn (1.0đ ngầm — chỉ tính khi câu có nội dung liên quan)
             const formatCheck = checkSentenceFormat(trimmedUser, question);
-            const hasRealContent = (keywordScore + diffScore) >= 1.5 && userWords.length >= 2;
-            const formatScore = hasRealContent ? formatCheck.formatScore : 0;
 
-            // Phát hiện thiếu mạo từ (a / an / the) và lỗi lặp/dư từ bất thường (như "isn't is" hoặc "is is")
-            const missingArticles = (bestDiff.missingWords || []).filter(w => /^(a|an|the)$/i.test(String(w || '').trim()));
             const hasDuplicateVerbGlitch = /\b(is|am|are|was|were|do|does|did|have|has|had)\s+\1\b/i.test(userExpandedText)
                 || /\b(isn't|aren't|wasn't|weren't|don't|doesn't|didn't|haven't|hasn't|hadn't)\s+(is|am|are|was|were|do|does|did|have|has|had)\b/i.test(userExpandedText);
-            const hasFormatIssue = formatCheck.issues.length > 0;
 
-            // Tổng hợp điểm ngầm & áp dụng các ngưỡng chặn chống chấm quá thoáng
-            let rawTotal = structureScore + keywordScore + diffScore + formatScore;
-
-            const isExactContentMatch = uniqueRefs.some(ref => {
+            // Kiểm tra khớp chính xác 100% theo thứ tự từ với bất kỳ đáp án chuẩn nào trong kho
+            const isExactContentMatch = !hasDuplicateVerbGlitch && uniqueRefs.some(ref => {
                 const refAtoms = tokenizeToExpandedAtoms(ref).atoms;
                 if (refAtoms.length === 0 || refAtoms.length !== userExpandedAtoms.length) return false;
                 return refAtoms.every((ra, idx) => areWordsSynonyms(ra.norm, userExpandedAtoms[idx].norm));
             });
 
-            const refAtomCount = tokenizeToExpandedAtoms(bestDiff.refText).atoms.length;
-            const minPassRatio = refAtomCount <= 5 ? 0.48 : 0.55;
+            // Trường hợp chỉ gõ nhầm 1 lỗi chính tả nhẹ nhưng đúng 100% cấu trúc, vị trí từ và không thiếu/thừa từ
+            const isOnlyMinorTypo = !isExactContentMatch
+                && usedTargetStructure
+                && !hasDuplicateVerbGlitch
+                && bestDiff.wrongCount === 0
+                && bestDiff.misplacedCount === 0
+                && bestDiff.missingWords.length === 0
+                && bestDiff.typoCount === 1;
 
-            if (isExactContentMatch && !hasDuplicateVerbGlitch) {
-                rawTotal = 9.0 + formatCheck.formatScore;
-            } else if (!hasRealContent) {
-                rawTotal = Math.min(rawTotal, 2.0);
-            } else {
-                // Chặn trần 1: Sai cấu trúc mục tiêu hoặc sai ngữ pháp câu hỏi/phủ định -> Chưa đạt (<= 6.0)
-                if (!usedTargetStructure) {
-                    rawTotal = Math.min(rawTotal, 6.0);
-                }
-                // Chặn trần 2: Khớp từ quá thấp (nới nhẹ cho câu A1 ngắn <= 5 từ) -> Chưa đạt (<= 6.0)
-                if (bestDiff.ratio < minPassRatio) {
-                    rawTotal = Math.min(rawTotal, 6.0);
-                }
-                // Chặn trần 3: Có từ gạch đỏ, thiếu mạo từ, lỗi lặp từ, lỗi hình thức hoặc sai chính tả -> Không cho lên "Chuẩn xác" (<= 8.5)
-                if (
-                    bestDiff.ratio < 0.75 ||
-                    bestDiff.wrongCount >= 1 ||
-                    missingArticles.length > 0 ||
-                    hasDuplicateVerbGlitch ||
-                    hasFormatIssue ||
-                    typoKeywords.length > 0
-                ) {
-                    rawTotal = Math.min(rawTotal, 8.5);
-                }
-            }
-
-            // Nếu thiếu >= 3 từ hoặc có lỗi lặp từ bất thường -> hạ xuống Chưa đạt (<= 6.0)
-            if (!isExactContentMatch && ((bestDiff.missingWords || []).length >= 3 || hasDuplicateVerbGlitch)) {
-                rawTotal = Math.min(rawTotal, 6.0);
-            }
-
-            const score = Math.min(10, Math.max(1.0, Math.round(rawTotal * 2) / 2));
-            const isPassed = score >= 7.0 && (!question.isStructureMode || usedTargetStructure);
-            const verdict = resolveVerdictTier(score, isPassed);
-
-            // 4 thẻ trạng thái gọn gàng (Không hiển thị số thập phân kiểu 1.5/2.5)
-            const errorTags = [
-                {
-                    key: 'structure',
-                    label: 'Cấu trúc',
-                    ok: usedTargetStructure,
-                    valueText: usedTargetStructure ? 'Đạt' : 'Chưa đúng',
-                    detail: usedTargetStructure ? 'Áp dụng đúng cấu trúc mục tiêu' : syntaxCheck.reason
-                },
-                {
-                    key: 'vocab',
-                    label: 'Từ khóa',
-                    ok: missingKeywords.length === 0 && typoKeywords.length === 0,
-                    valueText: `${matchedKwExactCount}/${rawKeywords.length}`,
-                    detail: missingKeywords.length > 0 ? `Thiếu/khác: ${missingKeywords.join(', ')}` : (typoKeywords.length > 0 ? `Gõ nhầm nhẹ: ${typoKeywords.join(', ')}` : 'Đủ từ khóa trọng tâm')
-                },
-                {
-                    key: 'diff',
-                    label: 'Khớp từ',
-                    ok: bestDiff.ratio >= 0.72 && bestDiff.wrongCount <= 1,
-                    valueText: `${Math.round(bestDiff.ratio * 100)}%`,
-                    detail: `${Math.round(bestDiff.ratio * 100)}% tương đồng câu chuẩn`
-                },
-                {
-                    key: 'format',
-                    label: 'Hình thức',
-                    ok: formatCheck.issues.length === 0,
-                    valueText: formatCheck.issues.length === 0 ? 'Chuẩn' : 'Cần sửa',
-                    detail: formatCheck.issues.length === 0 ? 'Viết hoa & dấu câu chuẩn' : formatCheck.issues.join('; ')
-                }
-            ];
-
+            let score = 4.0;
+            let verdict = 'retry';
             let title = "";
             let feedback = "";
 
-            if (verdict === 'excellent') {
-                title = "Chuẩn xác! Diễn đạt rất tự nhiên";
-                feedback = formatCheck.issues.length > 0
-                    ? `Nội dung và cấu trúc của bạn rất chuẩn! Chỉ lưu ý nhỏ về hình thức: ${formatCheck.issues.join(' & ')}.`
-                    : "Bạn đã vận dụng chính xác cấu trúc mục tiêu, dùng đúng từ khóa và trật tự câu trôi chảy như người bản xứ.";
-            } else if (verdict === 'passed') {
-                title = "Đạt chuẩn — Có góp ý nhỏ";
-                const notes = [];
-                if (hasDuplicateVerbGlitch) notes.push("Kiểm tra lại cụm động từ/trợ động từ bị lặp/dư từ");
-                if (missingArticles.length > 0) notes.push(`Còn thiếu mạo từ (${missingArticles.join(', ')})`);
-                if (typoKeywords.length > 0) notes.push(`Chú ý lỗi chính tả nhẹ (${typoKeywords.join(', ')})`);
-                if (missingKeywords.length > 0) notes.push(`Một vài từ khóa chưa khớp hẳn câu mẫu (${missingKeywords.join(', ')})`);
-                if (formatCheck.issues.length > 0) notes.push(`Hình thức: ${formatCheck.issues.join(', ')}`);
-                feedback = notes.length > 0
-                    ? `Câu dịch của bạn đã đạt yêu cầu và được tích hoàn thành. ${notes.join('. ')}. Bạn có thể đối chiếu câu chuẩn ngay bên dưới để trau chuốt thêm!`
-                    : "Bạn đã áp dụng đúng cấu trúc câu và truyền tải đúng ý chính. Hãy đối chiếu thêm câu chuẩn bên dưới để diễn đạt thật tự nhiên nhé!";
-            } else if (!usedTargetStructure && syntaxCheck.reason) {
-                title = "Chưa đạt — Sai cấu trúc / Ngữ pháp";
-                feedback = `${syntaxCheck.reason} Hãy đối chiếu các từ bị gạch đỏ phía trên với Câu trả lời chuẩn ngay bên dưới rồi sửa lại nhé!`;
+            if (isExactContentMatch && usedTargetStructure) {
+                if (formatCheck.issues.length === 0) {
+                    score = 10.0;
+                    verdict = 'excellent';
+                    title = "Chuẩn xác! Diễn đạt rất tự nhiên";
+                    feedback = "Câu dịch của bạn khớp chuẩn xác với đáp án bản xứ cả về từ vựng, ngữ pháp lẫn hình thức.";
+                } else {
+                    score = 8.5;
+                    verdict = 'passed';
+                    title = "Đạt chuẩn — Lưu ý nhỏ về hình thức";
+                    feedback = `Nội dung và ngữ pháp hoàn toàn chính xác! Chỉ lưu ý nhỏ: ${formatCheck.issues.join(' và ')}.`;
+                }
+            } else if (isOnlyMinorTypo) {
+                score = 8.0;
+                verdict = 'passed';
+                title = "Đạt chuẩn — Gõ nhầm nhẹ chính tả";
+                feedback = `Bạn đã viết đúng cấu trúc và trật tự từ, chỉ gõ nhầm nhẹ 1 từ (xem gợi ý màu vàng phía trên).`;
             } else {
-                title = "Chưa đạt — Cần sửa lại";
-                feedback = `Câu dịch mới khớp ${Math.round(bestDiff.ratio * 100)}% với đáp án chuẩn${missingKeywords.length > 0 ? ` và còn thiếu/sai từ khóa (${missingKeywords.join(', ')})` : ''}. Nếu bạn dùng cách diễn đạt đồng nghĩa khác, hãy bấm "Phúc khảo bằng Gemini AI" ở trên để kiểm tra ngữ nghĩa nhé!`;
+                // Chấm chặt: Sai cấu trúc, sai trật tự từ, thiếu từ hoặc khác từ mẫu -> Chưa chính xác (retry)
+                score = Math.min(6.0, Math.max(2.0, Math.round(bestDiff.ratio * 6 * 2) / 2));
+                verdict = 'retry';
+
+                if (!usedTargetStructure && syntaxCheck.reason) {
+                    title = "Chưa chính xác — Lỗi cấu trúc / Ngữ pháp";
+                    feedback = `${syntaxCheck.reason} Hãy đối chiếu với Câu trả lời chuẩn bên dưới, hoặc bấm "Chấm bằng Gemini AI" nếu bạn dùng cách diễn đạt tự nhiên khác nhé!`;
+                } else if (bestDiff.misplacedWords.length > 0 && bestDiff.missingWords.length === 0 && bestDiff.wrongCount === 0) {
+                    title = "Chưa chính xác — Sai trật tự từ";
+                    feedback = `Bạn đã dùng đúng các từ vựng nhưng xếp sai vị trí (${bestDiff.misplacedWords.join(', ')}). Hãy xem lại trật tự ở Câu trả lời chuẩn bên dưới nhé!`;
+                } else {
+                    title = "Chưa chính xác — Cần sửa lại";
+                    const detailParts = [];
+                    if (bestDiff.misplacedWords.length > 0) detailParts.push(`sai vị trí từ: ${bestDiff.misplacedWords.join(', ')}`);
+                    if (bestDiff.missingWords.length > 0) detailParts.push(`còn thiếu: ${bestDiff.missingWords.slice(0, 5).join(', ')}`);
+                    const detailStr = detailParts.length > 0 ? ` (${detailParts.join('; ')})` : '';
+                    feedback = `Câu viết của bạn chưa khớp với đáp án chuẩn${detailStr}. Nếu câu của bạn vẫn đúng ngữ pháp theo cách nói khác, hãy bấm "Chấm bằng Gemini AI" ở trên để kiểm tra nhé!`;
+                }
             }
 
             return {
@@ -920,14 +758,6 @@
                 formal_native: question.sampleFormal,
                 alternatives: pedagogy.alternatives,
                 wordDiff: bestDiff,
-                breakdown: {
-                    structureScore,
-                    keywordScore: Math.round(keywordScore * 10) / 10,
-                    diffScore: Math.round(diffScore * 10) / 10,
-                    formatScore,
-                    formatIssues: formatCheck.issues,
-                    errorTags
-                },
                 source: 'local'
             };
         }
@@ -955,7 +785,7 @@
             displayEvaluationResult(localResult, question, userText, false);
         }
 
-        // Render khối "Bạn viết:" (Word-level Diff) + 4 thẻ trạng thái + Slot nút Gemini AI
+        // Render khối "Bạn viết:" (Word-level Diff tinh gọn) + Lối tắt Chấm bằng Gemini AI
         function renderWordDiffPanel(result, question, userText, isAnswerView) {
             const detailsBody = document.getElementById('result-details-body');
             if (!detailsBody) return;
@@ -977,9 +807,6 @@
             }
 
             const wordDiff = result.wordDiff;
-            const breakdown = result.breakdown;
-            const safeUserSpeak = (userText || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-
             const tokensHtml = (wordDiff && Array.isArray(wordDiff.userTokens) && wordDiff.userTokens.length > 0)
                 ? wordDiff.userTokens.map(tok => {
                     const safeRaw = escapeHtmlSafe(tok.raw);
@@ -989,56 +816,45 @@
                     if (tok.status === 'typo') {
                         return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg font-bold text-amber-800 bg-amber-50 border border-amber-300" title="Gõ nhầm chính tả nhẹ — gợi ý: ${escapeHtmlSafe(tok.suggestion)}"><span class="underline decoration-wavy decoration-amber-500">${safeRaw}</span><span class="text-[11px] font-extrabold text-emerald-700 bg-white px-1 rounded">→ ${escapeHtmlSafe(tok.suggestion)}</span></span>`;
                     }
-                    return `<span class="inline-block px-1.5 py-0.5 rounded-lg font-bold text-rose-700 bg-rose-100/90 border border-rose-200 line-through decoration-rose-500 decoration-2" title="Từ sai, chia sai dạng hoặc thừa so với câu chuẩn">${safeRaw}</span>`;
+                    if (tok.status === 'misplaced') {
+                        return `<span class="inline-block px-1.5 py-0.5 rounded-lg font-bold text-amber-800 bg-amber-100/80 border border-amber-300 underline decoration-wavy decoration-amber-600" title="Từ đúng nhưng xếp sai vị trí trong câu">${safeRaw}</span>`;
+                    }
+                    return `<span class="inline-block px-1.5 py-0.5 rounded-lg font-bold text-rose-700 bg-rose-100/90 border border-rose-200 line-through decoration-rose-500 decoration-2" title="Từ sai hoặc thừa so với đáp án chuẩn">${safeRaw}</span>`;
                 }).join(' ')
                 : `<span class="text-slate-700 font-semibold">${escapeHtmlSafe(userText)}</span>`;
 
-            const missingHtml = (wordDiff && Array.isArray(wordDiff.missingWords) && wordDiff.missingWords.length > 0)
+            const misplacedHtml = (wordDiff && Array.isArray(wordDiff.misplacedWords) && wordDiff.misplacedWords.length > 0)
                 ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
-                        <span class="font-bold text-slate-500"><i class="fa-solid fa-circle-plus text-indigo-500 mr-1"></i>Từ gợi ý còn thiếu:</span>
-                        ${wordDiff.missingWords.slice(0, 8).map(w => `<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/70 font-bold">${escapeHtmlSafe(w)}</span>`).join('')}
+                        <span class="font-bold text-amber-700"><i class="fa-solid fa-arrows-left-right text-amber-500 mr-1"></i>Sai vị trí từ:</span>
+                        ${wordDiff.misplacedWords.slice(0, 6).map(w => `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 font-bold">${escapeHtmlSafe(w)}</span>`).join('')}
                    </div>`
                 : '';
 
-            const breakdownTagsHtml = (breakdown && Array.isArray(breakdown.errorTags))
-                ? `<div class="flex flex-wrap items-center gap-1.5 pt-1">
-                        ${breakdown.errorTags.map(tag => {
-                            const style = tag.ok
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200';
-                            const icon = tag.ok ? 'fa-circle-check text-emerald-500' : 'fa-circle-xmark text-rose-500';
-                            return `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border ${style}" title="${escapeHtmlSafe(tag.detail)}">
-                                        <i class="fa-solid ${icon} text-[10px]"></i>
-                                        <span>${escapeHtmlSafe(tag.label)}: ${escapeHtmlSafe(tag.valueText)}</span>
-                                    </span>`;
-                        }).join('')}
+            const missingHtml = (wordDiff && Array.isArray(wordDiff.missingWords) && wordDiff.missingWords.length > 0)
+                ? `<div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span class="font-bold text-slate-500"><i class="fa-solid fa-circle-plus text-indigo-500 mr-1"></i>Từ còn thiếu:</span>
+                        ${wordDiff.missingWords.slice(0, 8).map(w => `<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/70 font-bold">${escapeHtmlSafe(w)}</span>`).join('')}
                    </div>`
                 : '';
 
             const isGeminiVerified = result.source === 'gemini';
             const verifiedBadge = isGeminiVerified
-                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-700 border border-purple-200"><i class="fa-solid fa-sparkles mr-1"></i>Đã đồng bộ theo Gemini AI</span>`
-                : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">So khớp trực quan</span>`;
+                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-700 border border-purple-200"><i class="fa-solid fa-sparkles mr-1"></i>Đã chấm bởi Gemini AI</span>`
+                : '';
 
             diffContainer.className = 'p-4 sm:p-5 rounded-3xl border border-slate-200/90 bg-white shadow-2xs space-y-3';
             diffContainer.innerHTML = `
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Bạn viết:</span>
-                        ${verifiedBadge}
-                    </div>
-                    <button type="button" onclick="speakText('${safeUserSpeak}', this, 0.92)" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 text-[11px] font-bold transition-all" title="Nghe lại chính câu bạn vừa viết">
-                        <i class="fa-solid fa-volume-low text-xs"></i>
-                        <span>Nghe câu bạn viết</span>
-                    </button>
+                <div class="flex items-center gap-2">
+                     <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Bạn viết:</span>
+                     ${verifiedBadge}
                 </div>
 
                 <div class="flex flex-wrap items-center gap-1.5 text-sm sm:text-base leading-relaxed">
-                    ${tokensHtml}
+                 ${tokensHtml}
                 </div>
 
+                ${misplacedHtml}
                 ${missingHtml}
-                ${breakdownTagsHtml}
 
                 <!-- Khu vực gắn nút Chấm bằng Gemini AI & Hộp nhận xét AI -->
                 <div id="gemini-reeval-slot" class="pt-2 border-t border-slate-100"></div>
@@ -1049,6 +865,60 @@
             }
         }
 
+        // Render khối Giải thích chi tiết từ Gemini AI đã lưu sẵn (0 token) nếu bài học có trường aiExplanation
+        function renderPreGeneratedAIExplanation(question) {
+            const detailsBody = document.getElementById('result-details-body');
+            if (!detailsBody) return;
+
+            let box = document.getElementById('pregenerated-ai-explanation-box');
+            const rawExp = question && question.aiExplanation;
+            if (!rawExp) {
+                if (box) box.remove();
+                return;
+            }
+
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'pregenerated-ai-explanation-box';
+                detailsBody.appendChild(box);
+            }
+
+            const bodyHtml = typeof rawExp === 'string'
+                ? `<p class="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">${escapeHtmlSafe(rawExp)}</p>`
+                : `
+                    ${rawExp.summary ? `<p class="text-xs sm:text-sm text-slate-700 leading-relaxed">${escapeHtmlSafe(rawExp.summary)}</p>` : ''}
+                    ${Array.isArray(rawExp.grammarPoints) && rawExp.grammarPoints.length > 0 ? `
+                        <div class="space-y-1">
+                            <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Cấu trúc ngữ pháp trọng tâm:</p>
+                            <ul class="list-disc pl-4 space-y-1 text-xs text-slate-700">
+                                ${rawExp.grammarPoints.map(pt => `<li>${escapeHtmlSafe(pt)}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    ${rawExp.nativeTip ? `
+                        <div class="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900">
+                            <i class="fa-solid fa-lightbulb text-amber-500 mr-1.5"></i>${escapeHtmlSafe(rawExp.nativeTip)}
+                        </div>
+                    ` : ''}
+                `;
+
+            box.className = 'p-4 sm:p-5 rounded-3xl border border-amber-200/90 bg-gradient-to-br from-amber-50/60 via-white to-indigo-50/30 space-y-2.5';
+            box.innerHTML = `
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-extrabold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                            <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+                            <span>Giải thích chi tiết từ Gemini AI</span>
+                        </span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Đã lưu sẵn • 0 token
+                        </span>
+                    </div>
+                </div>
+                ${bodyHtml}
+            `;
+        }
+
         // Cầu nối ưu tiên kết quả từ Gemini AI (Đồng bộ cả 2 chiều: nâng lên Đạt/Chuẩn xác HOẶC hạ xuống Chưa đạt)
         window.applyReEvaluationResult = function (aiPayload) {
             if (!aiPayload || !state.lastEvaluationContext) return null;
@@ -1056,7 +926,6 @@
             const aiStructOk = question.isStructureMode ? Boolean(aiPayload.used_target_structure) : true;
             const aiMeaningOk = aiPayload.meaning_ok !== false;
 
-            // Quy đổi verdict + score từ Gemini thành điểm ngầm nhất quán với 3 trạng thái
             let finalScore = Math.min(10, Math.max(0, Math.round(Number(aiPayload.score) * 2) / 2));
             if (aiPayload.verdict === 'excellent' && aiStructOk && aiMeaningOk) {
                 finalScore = Math.max(finalScore, 9.5);
@@ -1080,7 +949,7 @@
             const titleMap = {
                 excellent: 'Gemini AI xác nhận: Chuẩn xác!',
                 passed: 'Gemini AI xác nhận: Đạt chuẩn (Góp ý nhỏ)',
-                retry: 'Gemini AI nhận xét: Chưa đạt — Cần sửa lại'
+                retry: 'Gemini AI nhận xét: Chưa chính xác'
             };
 
             const updatedResult = {
@@ -1105,7 +974,7 @@
             };
         };
 
-        // Hiển thị kết quả theo MÔ HÌNH 3 TRẠNG THÁI (Chuẩn xác / Đạt - Góp ý nhẹ / Chưa đạt)
+        // Hiển thị kết quả theo MÔ HÌNH 3 TRẠNG THÁI (Chuẩn xác / Đạt chuẩn / Chưa chính xác)
         function displayEvaluationResult(result, question, userText, isReEvaluation = false) {
             const resultPanel = document.getElementById('result-panel');
             const scoreHeader = document.getElementById('score-header');
@@ -1123,7 +992,6 @@
             result.verdict = verdict;
             state.lastEvaluationContext = { question, userText, result };
 
-            // === ĐỒNG BỘ HỘP ÔN TẬP (SPACED REPETITION) ===
             if (!isAnswerView && question) {
                 const sId = question.isStructureMode ? question.structureInfo.id : (question.topic || 'topic');
                 checkAndAddToReviewBox(sId, question.id, isPassed ? score : Math.min(score, 6.0), userText, question.vi);
@@ -1152,26 +1020,24 @@
                     scoreBar.className = "h-full bg-emerald-500 rounded-full transition-all duration-500";
                 } else if (verdict === 'passed') {
                     scoreCircle.innerHTML = `<i class="fa-solid fa-check text-xl"></i><span class="text-[10px] font-extrabold tracking-tight mt-0.5">Đạt chuẩn</span>`;
-                    scoreBar.style.width = `78%`;
+                    scoreBar.style.width = `82%`;
                     scoreHeader.className = "p-5 sm:p-6 border-b border-slate-100 bg-gradient-to-r from-amber-50/90 to-yellow-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4";
                     scoreCircle.className = "w-16 h-16 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center shadow-md shrink-0";
                     scoreBar.className = "h-full bg-amber-500 rounded-full transition-all duration-500";
                 } else {
-                    scoreCircle.innerHTML = `<i class="fa-solid fa-rotate-right text-xl"></i><span class="text-[10px] font-extrabold tracking-tight mt-0.5">Chưa đạt</span>`;
-                    scoreBar.style.width = `35%`;
+                    scoreCircle.innerHTML = `<i class="fa-solid fa-xmark text-xl"></i><span class="text-[10px] font-extrabold tracking-tight mt-0.5">Chưa đúng</span>`;
+                    scoreBar.style.width = `30%`;
                     scoreHeader.className = "p-5 sm:p-6 border-b border-slate-100 bg-gradient-to-r from-rose-50/90 to-pink-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4";
                     scoreCircle.className = "w-16 h-16 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center shadow-md shrink-0";
                     scoreBar.className = "h-full bg-rose-500 rounded-full transition-all duration-500";
                 }
 
-                // TÍNH & ĐỒNG BỘ XP (Hỗ trợ cả cộng thưởng lẫn hoàn tác nếu Gemini hạ kết quả trong cùng lượt)
                 if (typeof calculateAndAwardSentenceXP === 'function') {
                     xpAwardInfo = calculateAndAwardSentenceXP(question, score, isPassed, isReEvaluation);
                     xpEarnedBadge.innerText = xpAwardInfo.badgeText;
                 }
             }
 
-            // Hiển thị trạng thái hoàn thành Cấu trúc & Lưu tiến độ
             const structBanner = document.getElementById('structure-check-banner');
             if (question.isStructureMode && !isAnswerView) {
                 structBanner.classList.remove('hidden');
@@ -1191,7 +1057,7 @@
                     structBanner.className = "flex items-center gap-3 p-3.5 rounded-2xl border bg-rose-50/70 border-rose-200 text-rose-900";
                     iconBox.className = "w-8 h-8 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0";
                     iconBox.innerHTML = `<i class="fa-solid fa-exclamation"></i>`;
-                    bannerTitle.innerText = `Chưa hoàn thành — Cần đúng cấu trúc "${question.structureInfo.shortName}" & đúng nghĩa`;
+                    bannerTitle.innerText = `Chưa hoàn thành — Cần đúng cấu trúc "${question.structureInfo.shortName}" & trật tự câu`;
                     bannerSub.innerText = "Câu này đã được lưu vào Hộp ôn tập để bạn sửa lại hoặc ôn sau.";
                 }
 
@@ -1218,7 +1084,6 @@
                         }, 400);
                     }
                 } else {
-                    // Nếu chưa từng hoàn thành trước lượt này (kể cả khi Gemini vừa hạ điểm Tầng 1 xuống Chưa đạt) -> ghi nhận Cần làm lại
                     const wasCompletedBefore = sessionMeta ? sessionMeta.wasCompletedBeforeVisit : (prevBest >= 7);
                     if (!wasCompletedBefore) {
                         state.failedSituations[question.id] = score;
@@ -1232,10 +1097,8 @@
                 structBanner.classList.add('hidden');
             }
 
-            // Render Word-level Diff ("Bạn viết:") & Nút Gemini AI ngay phía trên Câu trả lời chuẩn
             renderWordDiffPanel(result, question, userText, isAnswerView);
 
-            // Điền Câu trả lời chuẩn theo cấu trúc mục tiêu + Phiên âm IPA
             const standardSentence = question.sampleCasual;
             document.getElementById('standard-target-sentence').innerText = standardSentence;
             document.getElementById('standard-target-ipa').innerText = (question && question.ipa) ? question.ipa : sentenceToIPA(standardSentence);
@@ -1244,7 +1107,6 @@
                 resetSpeechEvalPanel();
             }
 
-            // Ẩn hộp Nhận xét cục bộ khi đã có Nhận xét ưu tiên từ Gemini AI (tránh 2 nhận xét đối lập nhau)
             const localFeedbackBox = document.getElementById('local-feedback-box');
             if (localFeedbackBox) {
                 if (result.source === 'gemini' && !isAnswerView) {
@@ -1258,7 +1120,6 @@
             document.getElementById('casual-sentence').innerText = result.casual_native;
             document.getElementById('formal-sentence').innerText = result.formal_native;
 
-            // Render danh sách Các cách nói khác tương tự
             const altListEl = document.getElementById('alternative-sentences-list');
             const adminCustomAlts = Array.isArray(question.alternatives) ? question.alternatives : [];
             const autoOrAiAlts = (result.alternatives && result.alternatives.length > 0)
@@ -1319,6 +1180,9 @@
                 `;
             }).join('');
 
+            // Hiển thị giải thích chi tiết từ Gemini AI nếu câu hỏi đã có sẵn aiExplanation
+            renderPreGeneratedAIExplanation(question);
+
             const tagLabel = question.isStructureMode 
                 ? `Cấu trúc: ${question.structureInfo.shortName}` 
                 : (TOPIC_LABELS[question.topic] || "Giao tiếp");
@@ -1349,7 +1213,7 @@
             return xpAwardInfo;
         }
 
-        // Bộ sinh biến thể thông minh cục bộ (khi chạy Offline hoặc chưa dán Gemini API Key)
+        // Bộ sinh biến thể thông minh cục bộ
         function buildLocalSmartVariation(struct) {
             const variationPool = {
                 struct_1: [
@@ -1375,49 +1239,6 @@
                         sampleCasual: "Would you mind checking this report to see if there are any typos?",
                         sampleFormal: "Would you mind reviewing this report for any typographical errors?",
                         keywords: ["mind", "checking", "reviewing", "report"]
-                    },
-                    {
-                        vi: "Bạn có phiền nếu chúng ta dời lịch hẹn sang sáng thứ Năm tuần sau không?",
-                        hints: [{ en: "if we moved", vi: "nếu chúng ta dời (lùi thì)" }, { en: "next Thursday morning", vi: "sáng thứ Năm tuần sau" }],
-                        sampleCasual: "Would you mind if we moved our appointment to next Thursday morning?",
-                        sampleFormal: "Would you mind if we rescheduled our appointment to next Thursday morning?",
-                        keywords: ["mind", "if we", "moved", "rescheduled", "thursday"]
-                    }
-                ],
-                struct_3: [
-                    {
-                        vi: "Khóa học này không những cung cấp kiến thức thực tế mà còn giúp tôi tự tin hơn khi giao tiếp.",
-                        hints: [{ en: "practical knowledge", vi: "kiến thức thực tế" }, { en: "more confident", vi: "tự tin hơn" }],
-                        sampleCasual: "This course not only gives me practical knowledge, but it also makes me more confident.",
-                        sampleFormal: "This course not only provides practical knowledge but also boosts my confidence in communication.",
-                        keywords: ["not only", "course", "knowledge", "confident", "confidence"]
-                    }
-                ],
-                struct_4: [
-                    {
-                        vi: "Trước đây tôi từng rất ngại nói tiếng Anh trước đám đông, nhưng giờ tôi đã quen với việc đó rồi.",
-                        hints: [{ en: "used to be shy", vi: "từng rất ngại" }, { en: "used to speaking in public", vi: "quen với việc nói trước đám đông" }],
-                        sampleCasual: "I used to be shy about speaking English in public, but I'm used to it now.",
-                        sampleFormal: "I used to feel hesitant about speaking English in public, but I am accustomed to it now.",
-                        keywords: ["used to", "english", "public"]
-                    }
-                ],
-                struct_5: [
-                    {
-                        vi: "Dù lịch trình làm việc có dày đặc thế nào, bạn cũng nên dành 30 phút mỗi ngày để vận động.",
-                        hints: [{ en: "No matter how packed your schedule is", vi: "Dù lịch trình dày đặc thế nào" }, { en: "work out / exercise", vi: "vận động" }],
-                        sampleCasual: "No matter how packed your schedule is, you should spend 30 minutes a day exercising.",
-                        sampleFormal: "No matter how demanding your schedule may be, you should dedicate 30 minutes daily to physical exercise.",
-                        keywords: ["no matter how", "schedule", "30", "minutes"]
-                    }
-                ],
-                struct_6: [
-                    {
-                        vi: "Tôi ước gì mình đã lưu file tài liệu trước khi máy tính bất ngờ bị sập nguồn.",
-                        hints: [{ en: "I wish I had saved", vi: "Tôi ước gì mình đã lưu (quá khứ hoàn thành)" }, { en: "crashed / shut down", vi: "sập nguồn" }],
-                        sampleCasual: "I wish I had saved the document before my computer suddenly crashed.",
-                        sampleFormal: "I wish I had saved the document prior to the unexpected system shutdown.",
-                        keywords: ["wish", "had", "saved", "computer", "document"]
                     }
                 ]
             };
@@ -1425,10 +1246,7 @@
             const pool = variationPool[struct.id] || [];
             const existingVi = new Set(struct.situations.map(s => s.vi));
             const available = pool.filter(item => !existingVi.has(item.vi));
-
-            if (available.length > 0) {
-                return available[0];
-            }
+            if (available.length > 0) return available[0];
 
             const baseSituations = struct.situations;
             const randomBase = baseSituations[Math.floor(Math.random() * baseSituations.length)] || struct.situations[0];
@@ -1443,7 +1261,7 @@
             };
         }
 
-        // 5. TÍNH NĂNG TẠO CÂU MỚI BẰNG AI (HỖ TRỢ CẢ 2 CHẾ ĐỘ)
+        // 5. TÍNH NĂNG TẠO CÂU MỚI BẰNG AI
         async function generateNewQuestionWithAI() {
             const btn = document.getElementById('ai-generate-btn');
             const originalHTML = btn.innerHTML;
@@ -1454,9 +1272,7 @@
                 const struct = SENTENCE_STRUCTURES.find(s => s.id === state.selectedStructureId);
                 try {
                     const activeKey = (typeof window.getUserGeminiApiKey === "function") ? window.getUserGeminiApiKey() : apiKey;
-                    if (!activeKey) {
-                        throw new Error("Offline Mode");
-                    }
+                    if (!activeKey) throw new Error("Offline Mode");
 
                     const activeModel = localStorage.getItem("va_gemini_model") || "gemini-flash-lite-latest";
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(activeKey)}`;
@@ -1531,7 +1347,6 @@ Tình huống phải thực tế, tự nhiên cho người Việt, khác với c
                 return;
             }
 
-            // Chế độ Chủ đề tự do cũ
             const topicKey = state.currentTopic === 'all' 
                 ? ['daily', 'office', 'travel', 'interview'][Math.floor(Math.random() * 4)] 
                 : state.currentTopic;
@@ -1542,9 +1357,7 @@ Tình huống phải thực tế, tự nhiên cho người Việt, khác với c
 
             try {
                 const activeKey = (typeof window.getUserGeminiApiKey === "function") ? window.getUserGeminiApiKey() : apiKey;
-                if (!activeKey) {
-                    throw new Error("Offline Mode");
-                }
+                if (!activeKey) throw new Error("Offline Mode");
 
                 const activeModel = localStorage.getItem("va_gemini_model") || "gemini-flash-lite-latest";
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${encodeURIComponent(activeKey)}`;
@@ -1560,15 +1373,12 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                         responseSchema: {
                             type: "OBJECT",
                             properties: {
-                                vi: { type: "STRING", description: "Câu tiếng Việt cần dịch" },
+                                vi: { type: "STRING" },
                                 hints: {
                                     type: "ARRAY",
                                     items: {
                                         type: "OBJECT",
-                                        properties: {
-                                            en: { type: "STRING" },
-                                            vi: { type: "STRING" }
-                                        },
+                                        properties: { en: { type: "STRING" }, vi: { type: "STRING" } },
                                         required: ["en", "vi"]
                                     }
                                 },
@@ -1626,9 +1436,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             }
         }
 
-
-        // [Đã tách Hệ thống Phát âm sang module độc lập: js/audio_engine.js]
-
     // ==================== HỆ THỐNG LUYỆN NÓI & CHẤM ĐIỂM PHÁT ÂM TỪNG TỪ ====================
         let speechRecognizer = null;
         let isRecordingSpeech = false;
@@ -1636,7 +1443,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
         let audioChunks = [];
         let recordedAudioUrl = null;
 
-        // 1. Tách câu chuẩn thành từng thẻ từ kèm phiên âm IPA bên dưới (giống thẻ màu hồng/trắng trong ảnh)
         function renderWordByWordIPA(sentence) {
             const container = document.getElementById('word-by-word-ipa-box');
             if (!container || !sentence) return;
@@ -1669,7 +1475,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
         let lastRecognizedTranscript = '';
         let activeReplayPlayer = null;
 
-        // Chọn định dạng âm thanh tương thích với iPhone (iOS Safari) và Android/PC
         function getSupportedAudioMimeType() {
             if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
             const candidates = [
@@ -1685,7 +1490,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             return '';
         }
 
-        // 2. Bật / Tắt chế độ Đọc thử (Thu âm + Nhận diện giọng nói cùng lúc, tương thích iPhone iOS)
         async function toggleSpeechPractice() {
             if (isRecordingSpeech) {
                 stopSpeechPractice();
@@ -1701,7 +1505,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             const targetSentence = document.getElementById('standard-target-sentence').innerText.trim();
             if (!targetSentence) return;
 
-            // Chuẩn bị giao diện đang nghe
             isRecordingSpeech = true;
             lastRecognizedTranscript = "";
             const btn = document.getElementById('practice-speak-btn');
@@ -1715,7 +1518,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             panel.classList.remove('hidden');
             document.getElementById('speech-heard-text').innerText = "Đang lắng nghe bạn đọc câu tiếng Anh...";
 
-            // Khởi động thu âm giọng thật bằng MediaRecorder (Chuẩn MIME cho iPhone/iOS)
             try {
                 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1739,16 +1541,13 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                         if (replayBtn) replayBtn.classList.remove('hidden');
                         stream.getTracks().forEach(track => track.stop());
                     };
-                    // Truyền timeslice 250ms để Safari iOS liên tục đẩy dữ liệu âm thanh vào audioChunks
                     mediaRecorder.start(250);
                 }
             } catch (err) {
-                console.warn("Thiết bị ưu tiên dùng mic cho SpeechRecognition:", err);
                 const replayBtn = document.getElementById('replay-record-btn');
                 if (replayBtn) replayBtn.classList.remove('hidden');
             }
 
-            // Khởi động nhận diện chữ tiếng Anh
             speechRecognizer = new SpeechRecognition();
             speechRecognizer.lang = 'en-US';
             speechRecognizer.interimResults = true;
@@ -1765,14 +1564,8 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                 gradeSpokenSentence(targetSentence, transcript);
             };
 
-            speechRecognizer.onerror = () => {
-                stopSpeechPractice();
-            };
-
-            speechRecognizer.onend = () => {
-                stopSpeechPractice();
-            };
-
+            speechRecognizer.onerror = () => stopSpeechPractice();
+            speechRecognizer.onend = () => stopSpeechPractice();
             speechRecognizer.start();
         }
 
@@ -1796,7 +1589,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             }
         }
 
-        // Phát lại giọng người học (Tương thích iPhone Safari + Dự phòng đọc lại câu vừa nhận diện nếu iOS khóa mic kép)
         function replayUserVoice() {
             const replayBtn = document.getElementById('replay-record-btn');
             if (recordedAudioUrl) {
@@ -1810,18 +1602,14 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                     const playPromise = activeReplayPlayer.play();
                     if (playPromise !== undefined) {
                         playPromise.catch(() => {
-                            // Dự phòng nếu Safari chặn blob hoặc mic kép bị rỗng trên iOS
                             const fallbackText = lastRecognizedTranscript || document.getElementById('standard-target-sentence')?.innerText || '';
                             if (fallbackText) speakText(fallbackText, replayBtn, 0.9);
                         });
                     }
                     return;
-                } catch (e) {
-                    console.warn("Lỗi phát file ghi âm trên iOS, chuyển sang đọc lại:", e);
-                }
+                } catch (e) {}
             }
 
-            // Nếu iOS chặn thu âm đồng thời lúc nhận diện giọng nói -> Đọc lại câu hệ thống vừa nghe được từ bạn
             const fallbackText = lastRecognizedTranscript || document.getElementById('standard-target-sentence')?.innerText || '';
             if (fallbackText) {
                 speakText(fallbackText, replayBtn, 0.9);
@@ -1830,7 +1618,6 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             }
         }
 
-        // 3. Thuật toán tính khoảng cách chữ (Levenshtein) và chấm % cho từng từ
         function calcWordSimilarity(w1, w2) {
             if (w1 === w2) return 100;
             if (!w1 || !w2) return 0;
@@ -1848,39 +1635,90 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
             return Math.max(0, Math.round((1 - distance / Math.max(m, n)) * 100));
         }
 
+        const SPEECH_PROPER_NAME_ALIASES = {
+            linh: ['lin', 'lynn', 'ling', 'link', 'leen', 'lee'],
+            lan: ['lan', 'land', 'len', 'lon'],
+            nam: ['nam', 'num', 'nom'],
+            minh: ['min', 'ming', 'minh', 'mean'],
+            ha: ['ha', 'hah', 'har', 'her'],
+            hue: ['hue', 'hway', 'huay', 'way'],
+            viet: ['viet', 'vee', 'vet'],
+            vincent: ['vincent', 'vince', 'vinsent']
+        };
+
+        function normalizeSpeechCleanWord(raw) {
+            return String(raw || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/đ/g, 'd')
+                .replace(/[’‘`]/g, "'")
+                .replace(/[^a-z0-9']/g, '');
+        }
+
         function gradeSpokenSentence(targetSentence, spokenTranscript) {
-            const cleanHeard = spokenTranscript.toLowerCase().replace(/[.,?!;:"']/g, '').trim();
+            const displayHeard = String(spokenTranscript || '').trim();
+            const cleanHeard = displayHeard.toLowerCase().replace(/[.,?!;:"]/g, '').trim();
             document.getElementById('speech-heard-text').innerText = `"${cleanHeard}"`;
 
-            const targetTokens = targetSentence.replace(/^["']|["']$/g, '').trim().split(/\s+/);
-            const spokenWords = cleanHeard.split(/\s+/).filter(Boolean);
+            const targetTokens = targetSentence.replace(/^["']|["']$/g, '').trim().split(/\s+/).filter(Boolean);
+            const spokenRawWords = cleanHeard.split(/\s+/).filter(Boolean);
+            const spokenNormWords = spokenRawWords.map(w => normalizeSpeechCleanWord(w).replace(/'/g, ''));
             const usedIndices = new Set();
 
             let totalScoreSum = 0;
 
-            const cardsHTML = targetTokens.map(token => {
-                const cleanTargetWord = token.toLowerCase().replace(/[^a-z0-9']/g, '');
+            const cardsHTML = targetTokens.map((token, tokenIdx) => {
+                const rawCore = token.replace(/^[^a-zA-Z0-9'À-ỹ]+|[^a-zA-Z0-9'À-ỹ]+$/g, '');
+                const cleanTargetWithApos = normalizeSpeechCleanWord(rawCore);
+                const cleanTargetNoApos = cleanTargetWithApos.replace(/'/g, '');
                 let bestScore = 0;
-                let bestIdx = -1;
+                let matchedIndices = [];
 
-                spokenWords.forEach((sw, idx) => {
-                    if (usedIndices.has(idx)) return;
-                    const sim = calcWordSimilarity(cleanTargetWord, sw);
-                    if (sim > bestScore) {
-                        bestScore = sim;
-                        bestIdx = idx;
+                // 1. Kiểm tra từ rút gọn khớp với dạng viết đủ 2 từ (vd: "I'm" <-> "I am", "don't" <-> "do not")
+                const expandedParts = CONTRACTION_EXPANSION_MAP[cleanTargetWithApos];
+                if (Array.isArray(expandedParts) && expandedParts.length === 2) {
+                    for (let i = 0; i < spokenNormWords.length - 1; i++) {
+                        if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+                        if (spokenNormWords[i] === expandedParts[0] && spokenNormWords[i + 1] === expandedParts[1]) {
+                            bestScore = 100;
+                            matchedIndices = [i, i + 1];
+                            break;
+                        }
                     }
-                });
+                }
 
-                if (bestScore >= 60 && bestIdx !== -1) {
-                    usedIndices.add(bestIdx);
+                // 2. Nếu chưa khớp cụm 2 từ -> so từng từ đơn (đã bỏ dấu nháy để "i'm" khớp 100% với "im")
+                if (bestScore < 100) {
+                    const nameAliases = SPEECH_PROPER_NAME_ALIASES[cleanTargetNoApos] || [];
+                    const isLikelyProperName = tokenIdx > 0 && /^[A-ZÀ-Ỹ][a-zà-ỹ]+/.test(rawCore) && cleanTargetNoApos !== 'i';
+
+                    spokenNormWords.forEach((sw, idx) => {
+                        if (usedIndices.has(idx)) return;
+                        let sim = calcWordSimilarity(cleanTargetNoApos, sw);
+
+                        // Khớp tên riêng theo bảng biến thể phát âm STT
+                        if (nameAliases.includes(sw)) {
+                            sim = Math.max(sim, 95);
+                        } else if (isLikelyProperName && sw.startsWith(cleanTargetNoApos.slice(0, Math.min(2, cleanTargetNoApos.length))) && Math.abs(sw.length - cleanTargetNoApos.length) <= 2) {
+                            sim = Math.max(sim, 85);
+                        }
+
+                        if (sim > bestScore) {
+                            bestScore = sim;
+                            matchedIndices = [idx];
+                        }
+                    });
+                }
+
+                if (bestScore >= 60 && matchedIndices.length > 0) {
+                    matchedIndices.forEach(idx => usedIndices.add(idx));
                 } else if (bestScore < 50) {
                     bestScore = 0;
                 }
 
                 totalScoreSum += bestScore;
 
-                // Phân màu: >=80% Xanh lá, 50-79% Vàng cam, <50% Đỏ
                 let boxStyle = "bg-emerald-50 border-emerald-200 text-emerald-800";
                 let pctColor = "text-emerald-600";
                 if (bestScore < 50) {
@@ -1894,7 +1732,7 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                 return `
                     <div class="text-center">
                         <div class="px-3 py-1.5 rounded-xl border font-extrabold text-xs sm:text-sm ${boxStyle}">
-                            ${cleanTargetWord}
+                            ${rawCore || cleanTargetWithApos}
                         </div>
                         <div class="text-[10px] font-extrabold ${pctColor} mt-1">${bestScore}%</div>
                     </div>
