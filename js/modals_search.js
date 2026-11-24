@@ -207,6 +207,15 @@ function renderReviewPage() {
     const filterBar = document.getElementById('review-filter-bar');
     const audioBtn = document.getElementById('review-page-audio-btn');
     if (!listEl || !emptyEl) return;
+    if (typeof window.renderErrorTrackerSummaryInReviewPage === 'function') {
+    window.renderErrorTrackerSummaryInReviewPage();
+    }
+    if (typeof window.getReviewViewMode === 'function' && window.getReviewViewMode() === 'history') {
+    emptyEl.classList.add('hidden');
+    if (filterBar) filterBar.classList.add('hidden');
+    listEl.innerHTML = window.renderErrorHistoryListHTML();
+    return;
+    }   
 
     const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
     const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -259,9 +268,14 @@ function renderReviewPage() {
             : 'px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-all';
     }
 
+    const activeTag = typeof window.getActiveReviewErrorTagFilter === 'function' ? window.getActiveReviewErrorTagFilter() : 'all';
     const filtered = enriched.filter(x => {
-        if (reviewPageFilterMode === 'due') return x.isDue;
-        if (reviewPageFilterMode === 'upcoming') return !x.isDue;
+        if (reviewPageFilterMode === 'due' && !x.isDue) return false;
+        if (reviewPageFilterMode === 'upcoming' && x.isDue) return false;
+        if (activeTag !== 'all' && typeof window.getLatestErrorInfoForReviewItem === 'function') {
+            const errInfo = window.getLatestErrorInfoForReviewItem(x.item);
+            if (!errInfo || !Array.isArray(errInfo.errorTags) || !errInfo.errorTags.includes(activeTag)) return false;
+        }
         return true;
     });
 
@@ -288,6 +302,15 @@ function renderReviewPage() {
                         <span class="text-[11px] text-slate-400 font-medium">Hẹn ôn: ${dateStr}</span>
                     </div>
                     <p class="text-sm sm:text-base font-extrabold text-slate-900 leading-snug">"${esc(viText)}"</p>
+        ${(() => {
+        const errInfo = typeof window.getLatestErrorInfoForReviewItem === 'function' ? window.getLatestErrorInfoForReviewItem(item) : null;
+        const badges = errInfo && typeof window.renderErrorTagBadgesHTML === 'function' ? window.renderErrorTagBadgesHTML(errInfo.errorTags) : '';
+        const wrongAns = (errInfo && errInfo.userAnswer) || item.userTranslation || '';
+        return `
+        ${badges ? `<div class="flex flex-wrap items-center gap-1 pt-0.5">${badges}</div>` : ''}
+        ${wrongAns ? `<p class="text-xs text-rose-600/90 bg-rose-50/70 px-2.5 py-1.5 rounded-lg border border-rose-100 truncate" title="${esc(wrongAns)}"><span class="font-bold">Lần trước viết:</span> ${esc(wrongAns)}</p>` : ''}
+      `;
+    })()}
                 </div>
 
                 <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -309,24 +332,147 @@ function renderReviewPage() {
     }).join('');
 }
 
+// ==================== TỪ VỰNG TRỌNG TÂM CỦA TRẠM (TỰ ĐỘNG + KHỬ TRÙNG TOÀN CỤC) ====================
+let _vaStationVocabCache = {
+    signature: '',
+    byStructId: new Map(),
+    byItemId: new Map()
+};
 
-// ==================== TỪ VỰNG TRỌNG TÂM CỦA TRẠM (TRONG TAB LÝ THUYẾT) ====================
-function getStationVocabItems(structId) {
+function _normalizeVocabKey(term) {
+    const clean = String(term || '')
+        .toLowerCase()
+        .replace(/\.{2,}|[?!.,()]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!clean) return '';
+    // Chuẩn hóa cơ bản số nhiều -> số ít để tránh lặp (vd: students <-> student)
+    if (!clean.includes(' ') && clean.length > 3) {
+        if (clean.endsWith('ies')) return clean.slice(0, -3) + 'y';
+        if (clean.endsWith('es') && /(ches|shes|xes|zes|sses)$/.test(clean)) return clean.slice(0, -2);
+        if (clean.endsWith('s') && !clean.endsWith('ss')) return clean.slice(0, -1);
+    }
+    return clean;
+}
+
+function _buildStationVocabCache(targetCount = 15) {
+    const allStructs = (typeof SENTENCE_STRUCTURES !== 'undefined' && Array.isArray(SENTENCE_STRUCTURES))
+        ? SENTENCE_STRUCTURES
+        : (Array.isArray(window.SENTENCE_STRUCTURES) ? window.SENTENCE_STRUCTURES : []);
     const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
-    return repo.filter(item => item && item.structId === structId);
+    const dict = (typeof window.VA_DICTIONARY_CORE === 'object' && window.VA_DICTIONARY_CORE) ? window.VA_DICTIONARY_CORE : {};
+
+    const sig = `${allStructs.length}_${repo.length}_${Object.keys(dict).length}_${targetCount}`;
+    if (_vaStationVocabCache.signature === sig) return _vaStationVocabCache;
+
+    const byStructId = new Map();
+    const byItemId = new Map();
+    const globalSeen = new Set();
+
+    const stopWords = new Set([
+        'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+        'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'a', 'an', 'the', 'this', 'that', 'these', 'those',
+        'my', 'your', 'his', 'our', 'their', 'its',
+        'in', 'on', 'at', 'to', 'for', 'of', 'with', 'from', 'by', 'about',
+        'and', 'or', 'but', 'not', 'no', 'yes', 'so', 'if',
+        'do', 'does', 'did', 'have', 'has', 'had', 'will', 'would', 'can', 'could',
+        'there', 'here', 'very', 'too', 'many', 'much', 'some', 'any', 'what', 'who', 'where', 'when', 'how',
+        "i'm", "you're", "he's", "she's", "it's", "we're", "they're",
+        "isn't", "aren't", "don't", "doesn't", "didn't", "haven't", "hasn't"
+    ]);
+
+    // Bỏ qua các gợi ý mang tính mẫu ngữ pháp (vd: "Is this...", "He isn't", "What is")
+    const grammarPhraseRegex = /^(is|are|am|isn't|aren't|do|does|don't|doesn't|what|there|i'm|he's|she's|we're|they're|he isn't|they aren't)\b/i;
+
+    for (const struct of allStructs) {
+        if (!struct || !struct.id) continue;
+        const picked = [];
+
+        // BƯỚC 1: Ưu tiên từ soạn tay trong VOCAB_REPOSITORY_DATA (nhưng không trùng Trạm trước)
+        const manualItems = repo.filter(item => item && item.structId === struct.id);
+        for (const item of manualItems) {
+            if (picked.length >= targetCount) break;
+            const normKey = _normalizeVocabKey(item.term);
+            if (!normKey || globalSeen.has(normKey)) continue;
+
+            globalSeen.add(normKey);
+            picked.push(item);
+            byItemId.set(item.id, item);
+        }
+
+        // BƯỚC 2: Nếu chưa đủ 15 từ -> Tự động trích xuất từ 15 câu tình huống của Trạm
+        if (picked.length < targetCount && Array.isArray(struct.situations)) {
+            let autoSeq = 1;
+            for (const sit of struct.situations) {
+                if (picked.length >= targetCount) break;
+
+                const candidates = [
+                    ...(sit.hints || []).map(h => ({ term: h.en, vi: h.vi })),
+                    ...(sit.keywords || []).map(k => ({ term: k, vi: '' }))
+                ];
+
+                for (const c of candidates) {
+                    if (picked.length >= targetCount) break;
+                    let raw = String(c.term || '').replace(/\.{2,}|[?!.,]/g, '').trim();
+                    if (!raw || grammarPhraseRegex.test(raw)) continue;
+
+                    // Gọt mạo từ đầu cụm nếu có (vd: "an accountant" -> "accountant", "the chef" -> "chef")
+                    raw = raw.replace(/^(a|an|the)\s+/i, '').trim();
+                    const rawLower = raw.toLowerCase();
+                    const normKey = _normalizeVocabKey(raw);
+
+                    if (!normKey || normKey.length < 3 || stopWords.has(rawLower) || stopWords.has(normKey) || globalSeen.has(normKey)) {
+                        continue;
+                    }
+
+                    const dictEntry = dict[rawLower] || dict[normKey] || null;
+                    const viMeaning = String(c.vi || (dictEntry ? dictEntry.vi : '') || '').trim();
+                    if (!viMeaning) continue;
+
+                    globalSeen.add(normKey);
+                    const autoItem = {
+                        id: `auto_${struct.id}_${autoSeq++}`,
+                        stageId: struct.stageId || '',
+                        structId: struct.id,
+                        topic: sit.topic || 'daily',
+                        level: sit.level || struct.level || 'A1',
+                        term: raw,
+                        pos: dictEntry ? (dictEntry.pos || '') : '',
+                        ipa: dictEntry ? (dictEntry.ipa || '') : '',
+                        vi: viMeaning,
+                        exampleEn: '',
+                        exampleVi: ''
+                    };
+                    picked.push(autoItem);
+                    byItemId.set(autoItem.id, autoItem);
+                }
+            }
+        }
+
+        byStructId.set(struct.id, picked);
+    }
+
+    _vaStationVocabCache = { signature: sig, byStructId, byItemId };
+    return _vaStationVocabCache;
+}
+
+function getStationVocabItems(structId, targetCount = 15) {
+    const cache = _buildStationVocabCache(targetCount);
+    return cache.byStructId.get(structId) || [];
 }
 
 function speakStationVocabItem(vocabId, btnEl) {
-    const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
-    const item = repo.find(v => v.id === vocabId);
+    const cache = _buildStationVocabCache();
+    const item = cache.byItemId.get(vocabId);
     if (item && item.term && typeof speakText === 'function') {
         speakText(item.term, btnEl, 0.9);
     }
 }
 
 function saveStationVocabItem(vocabId, btnEl) {
-    const repo = Array.isArray(window.VOCAB_REPOSITORY_DATA) ? window.VOCAB_REPOSITORY_DATA : [];
-    const item = repo.find(v => v.id === vocabId);
+    const cache = _buildStationVocabCache();
+    const item = cache.byItemId.get(vocabId);
     if (!item) return;
 
     if (typeof window.saveWordToVocabBank === 'function') {
@@ -342,7 +488,7 @@ function renderStationVocabInTheory(struct) {
     const countEl = document.getElementById('ws-station-vocab-count');
     if (!box || !listEl || !struct) return;
 
-    const items = getStationVocabItems(struct.id);
+    const items = getStationVocabItems(struct.id, 15);
     if (items.length === 0) {
         box.classList.add('hidden');
         listEl.innerHTML = '';
@@ -367,17 +513,16 @@ function renderStationVocabInTheory(struct) {
             : `<button type="button" onclick="saveStationVocabItem('${item.id}', this)" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-indigo-600 text-amber-800 hover:text-white border border-amber-200/90 hover:border-indigo-600 font-bold text-[11px] inline-flex items-center gap-1 shrink-0 transition-all" title="Lưu vào Sổ tay từ vựng"><i class="fa-solid fa-plus text-[9px]"></i>Lưu</button>`;
 
         return `
-            <div class="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 hover:border-indigo-200 transition-all flex items-start justify-between gap-2.5">
+            <div class="p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80 hover:border-indigo-200 transition-all flex items-center justify-between gap-2.5">
                 <div class="min-w-0 flex-1 space-y-0.5">
                     <div class="flex items-center gap-1.5 flex-wrap">
                         <span class="font-extrabold text-sm text-indigo-950">${esc(item.term)}</span>
                         ${item.pos ? `<span class="text-[10px] font-bold text-slate-400">(${esc(item.pos)})</span>` : ''}
-                        <span class="font-mono text-[11px] text-indigo-600">${esc(item.ipa)}</span>
+                        ${item.ipa ? `<span class="font-mono text-[11px] text-indigo-600">${esc(item.ipa)}</span>` : ''}
                     </div>
                     <p class="text-xs font-bold text-emerald-700">${esc(item.vi)}</p>
-                    ${item.exampleEn ? `<p class="text-[11px] text-slate-500 italic truncate" title="${esc(item.exampleVi)}">"${esc(item.exampleEn)}"</p>` : ''}
                 </div>
-                <div class="flex items-center gap-1.5 shrink-0 pt-0.5">
+                <div class="flex items-center gap-1.5 shrink-0">
                     <button type="button" onclick="speakStationVocabItem('${item.id}', this)" class="w-8 h-8 rounded-full bg-white hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200/80 flex items-center justify-center transition-all" title="Nghe phát âm">
                         <i class="fa-solid fa-volume-high text-xs"></i>
                     </button>
@@ -387,6 +532,7 @@ function renderStationVocabInTheory(struct) {
         `;
     }).join('');
 }
+
 // ==================== GIAO DIỆN TÌM BÀI HỌC & TRA TỪ ĐIỂN 2 CHIỀU (ANH-VIỆT / VIỆT-ANH) ====================
 const GLOBAL_SEARCH_SUGGESTIONS = [
     'opportunity', 'cơ hội', 'To be', 'Gia đình', 'Du lịch', 'Have / Has', 'accommodation', 'Công sở'
@@ -676,6 +822,9 @@ function handleGlobalSearchInput(rawQuery) {
                         <div class="flex items-center gap-1.5 shrink-0">
                             <button type="button" onclick="speakDictSearchWord('${encoded}', this)" class="w-8 h-8 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe phát âm">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
+                            </button>
+                            <button type="button" onclick="openWordDetailModal('${encoded}')" class="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-600 text-slate-700 hover:text-white font-bold text-xs inline-flex items-center gap-1 shrink-0 transition-all" title="Xem nhiều nghĩa & cụm từ">
+                                <i class="fa-solid fa-circle-info text-[11px]"></i><span>Chi tiết</span>
                             </button>
                             ${saveBtn}
                         </div>

@@ -995,6 +995,9 @@
             if (!isAnswerView && question) {
                 const sId = question.isStructureMode ? question.structureInfo.id : (question.topic || 'topic');
                 checkAndAddToReviewBox(sId, question.id, isPassed ? score : Math.min(score, 6.0), userText, question.vi);
+                if (typeof window.recordErrorLogAttempt === 'function') {
+                window.recordErrorLogAttempt(question, userText, result, isReEvaluation);
+}
             }
 
             let xpAwardInfo = { xp: 0, bonusStructXp: 0, totalXp: 0, badgeText: '', reason: '' };
@@ -1454,10 +1457,9 @@ Yêu cầu trả về JSON gồm câu tiếng Việt tự nhiên (không sáo r�
                 const puncMatch = token.match(/^([^a-zA-Z0-9']*)([a-zA-Z0-9'-]+)([^a-zA-Z0-9']*)$/);
                 const coreWord = puncMatch ? puncMatch[2].toLowerCase() : token.toLowerCase();
                 const wordIpa = IPA_DICT[coreWord] || fallbackWordToIPA(coreWord);
-                const safeSpeak = coreWord.replace(/'/g, "\\'");
 
                 return `
-                    <div onclick="speakText('${safeSpeak}', null, 0.9)" class="cursor-pointer group bg-white hover:bg-indigo-50 border border-indigo-200/80 hover:border-indigo-400 px-3 py-2 rounded-xl text-center shadow-2xs transition-all select-none" title="Bấm để nghe phát âm từ '${token}'">
+                    <div class="cursor-pointer group bg-white hover:bg-indigo-50 border border-indigo-200/80 hover:border-indigo-400 px-3 py-2 rounded-xl text-center shadow-2xs transition-all select-none" title="Bấm để nghe phát âm & tra nhanh từ '${token}'">
                         <div class="text-sm sm:text-base font-extrabold text-slate-900 group-hover:text-indigo-700">${token}</div>
                         <div class="text-[11px] font-mono text-slate-400 group-hover:text-indigo-500 mt-0.5">/${wordIpa}/</div>
                     </div>

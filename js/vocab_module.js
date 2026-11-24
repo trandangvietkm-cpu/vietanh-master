@@ -1019,6 +1019,9 @@ let vocabSearchQuery = '';
                             <button type="button" onclick="speakVocabById('${item.id}', 'en', this, 0.9)" class="w-8 h-8 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe phát âm">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
                             </button>
+                            <button type="button" onclick="if(typeof openWordDetailModal==='function') openWordDetailModal('${encodeURIComponent(item.en || '')}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center transition-all" title="Xem chi tiết nhiều nghĩa & cụm từ">
+                                <i class="fa-solid fa-circle-info text-xs"></i>
+                            </button>
                             <button type="button" onclick="openQuickAddVocabModal('${item.id}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center transition-all" title="Chỉnh sửa">
                                 <i class="fa-solid fa-pen text-xs"></i>
                             </button>
@@ -1493,18 +1496,19 @@ window.openQuickAddVocabModal = function (editId = null) {
                 cardBox.title = `Chạm để lưu nhanh từ '${cleanWord}' vào Sổ tay (+2 XP)`;
 
                 cardBox.setAttribute('data-va-word', cleanWord);
-                // Gắn sự kiện click vào ô từ: đọc phát âm + hiện Popover 1 chạm (bấm "Sửa chi tiết" mới mở Form)
+                cardBox.removeAttribute('onclick');
+                // Gắn sự kiện click duy nhất vào ô từ: đọc phát âm 1 lần + hiện Popover 1 chạm
                 cardBox.addEventListener('click', function (ev) {
                     ev.stopPropagation();
                     if (typeof speakText === 'function') {
-                        speakText(cleanWord);
+                        speakText(cleanWord, null, 0.9);
                     }
                     if (typeof window.showWordPopover === 'function') {
                         window.showWordPopover(cleanWord, cardBox, () => window.onSampleWordClick(encoded, ev));
                     } else {
                         window.onSampleWordClick(encoded, ev);
                     }
-                });  
+                });
             }
         });
 

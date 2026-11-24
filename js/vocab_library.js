@@ -280,6 +280,9 @@
                                 <button type="button" onclick="speakVocabLibWord('${encoded}', this)" class="w-8 h-8 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe phát âm">
                                     <i class="fa-solid fa-volume-high text-xs"></i>
                                 </button>
+                                <button type="button" onclick="if(typeof openWordDetailModal==='function') openWordDetailModal('${encoded}')" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white flex items-center justify-center transition-all" title="Xem chi tiết nhiều nghĩa">
+                                    <i class="fa-solid fa-circle-info text-xs"></i>
+                                </button>
                                 ${saveBtn}
                             </div>
                         </div>
@@ -574,6 +577,9 @@
                         <div class="flex items-center gap-1.5 shrink-0">
                             <button type="button" onclick="speakVocabLibWord('${encoded}', this)" class="w-8 h-8 rounded-full bg-white hover:bg-indigo-600 text-indigo-600 hover:text-white border border-slate-200 flex items-center justify-center transition-all" title="Nghe phát âm">
                                 <i class="fa-solid fa-volume-high text-xs"></i>
+                            </button>
+                            <button type="button" onclick="if(typeof openWordDetailModal==='function') openWordDetailModal('${encoded}')" class="w-8 h-8 rounded-full bg-white hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-all" title="Xem chi tiết nhiều nghĩa">
+                                <i class="fa-solid fa-circle-info text-xs"></i>
                             </button>
                             ${saveBtn}
                         </div>

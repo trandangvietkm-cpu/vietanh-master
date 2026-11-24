@@ -217,12 +217,21 @@
 
         // Hỗ trợ cả file MP3 tạo sẵn (audio/<id>.mp3) và Web Speech API tối ưu + callback onComplete
         function speakText(text, btnElement = null, customRate = 0.95, options = {}) {
+            let __lastSpeakKey = '';
+            let __lastSpeakTime = 0;
             const cleanText = String(text || '').replace(/^["']|["']$/g, '').trim();
             const onComplete = (options && typeof options.onComplete === 'function') ? options.onComplete : null;
             if (!cleanText) {
                 if (onComplete) onComplete();
                 return;
             }
+            const nowMs = Date.now();
+            const speakKey = `${cleanText.toLowerCase()}|${customRate}`;
+            if (speakKey === __lastSpeakKey && (nowMs - __lastSpeakTime) < 250) {
+                return;
+            }
+            __lastSpeakKey = speakKey;
+            __lastSpeakTime = nowMs;   
 
             stopAllPlayback();
             const myToken = vaPlaybackToken;

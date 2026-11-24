@@ -1,62 +1,106 @@
-/* ================= CSS CHUNG CHO TOÀN ỨNG DỤNG (style.css) ================= */
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+/* ================= 1. HỆ THỐNG BIẾN MÀU (DESIGN TOKENS: 1 NGUỒN DUY NHẤT) ================= */
+:root {
+  --va-canvas: #f8fafc;
+  --va-card: #ffffff;
+  --va-inner: #f1f5f9;
+  --va-border: #e2e8f0;
+  --va-text: #0f172a;
+  --va-text-sub: #334155;
+  --va-text-muted: #64748b;
+
+  /* Màu chủ đạo: Xanh Sky đồng bộ */
+  --va-primary: #0284c7;
+  --va-primary-hover: #0369a1;
+  --va-accent: #0284c7;
+  --va-accent-tint: #e0f2fe;
+  --va-accent-border: #bae6fd;
+
+  /* Màu trạng thái */
+  --va-emerald: #059669;
+  --va-emerald-tint: #ecfdf5;
+  --va-rose: #e11d48;
+  --va-rose-tint: #fff1f2;
+  --va-amber: #d97706;
+  --va-amber-tint: #fffbeb;
 }
 
-/* Hiệu ứng sóng âm khi đang đọc phát âm */
+html.va-dark {
+  --va-canvas: #0f172a;
+  --va-card: #1e293b;
+  --va-inner: #263349;
+  --va-border: rgba(148, 163, 184, 0.14);
+  --va-text: #e2e8f0;          /* Trắng ngà dịu mắt khi học lâu */
+  --va-text-sub: #cbd5e1;
+  --va-text-muted: #94a3b8;
+
+  /* Màu chủ đạo: Xanh Sky dịu */
+  --va-primary: #0284c7;
+  --va-primary-hover: #0369a1;
+  --va-accent: #38bdf8;
+  --va-accent-tint: rgba(56, 189, 248, 0.14);
+  --va-accent-border: rgba(56, 189, 248, 0.36);
+
+  /* Màu trạng thái dịu mắt */
+  --va-emerald: #34d399;
+  --va-emerald-tint: rgba(52, 211, 153, 0.14);
+  --va-rose: #fda4af;
+  --va-rose-tint: rgba(244, 63, 94, 0.12);
+  --va-amber: #fbbf24;
+  --va-amber-tint: rgba(245, 158, 11, 0.14);
+  color-scheme: dark;
+}
+
+/* ================= 2. NỀN TẢNG CHUNG & THANH CUỘN ================= */
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--va-canvas) !important;
+  color: var(--va-text) !important;
+}
+
 @keyframes pulse-ring {
   0% { transform: scale(0.8); opacity: 0.8; }
   100% { transform: scale(1.6); opacity: 0; }
 }
 .speaking-btn {
   position: relative;
-  background-color: #e0e7ff !important;
-  color: #4f46e5 !important;
+  background-color: var(--va-accent-tint) !important;
+  color: var(--va-accent) !important;
 }
 .speaking-btn::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  border: 2px solid #6366f1;
+  border: 2px solid var(--va-accent);
   animation: pulse-ring 1.2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
-/* Tùy chỉnh thanh cuộn */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--va-canvas); }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+html.va-dark ::-webkit-scrollbar-thumb { background: #334155; }
+html.va-dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ================= 3. KHÓA HIỂN THỊ THEO THIẾT BỊ & FOCUS MODE ================= */
+#va-mobile-bottom-nav,
+#va-desktop-sidebar,
+#va-desktop-dict-search-wrap {
+  display: none !important;
 }
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-/* Chế độ tập trung (Focus Mode): Ẩn Header & thanh chọn chế độ khi vào Phòng luyện (PC + Mobile) */
+
 body.va-in-workspace > header,
 body.va-in-topic-practice > header,
 body.va-in-workspace #practice-mode-switcher-bar,
 body.va-in-topic-practice #practice-mode-switcher-bar {
   display: none !important;
 }
-
-/* Cân chỉnh khoảng đệm phía trên khi Header đã ẩn */
 body.va-in-workspace main,
 body.va-in-topic-practice main {
   padding-top: 1rem;
 }
-/* ================= BOTTOM NAV & BOTTOM SHEET (MOBILE NATIVE) ================= */
-#va-mobile-bottom-nav {
-  display: none;
-}
 
+/* ================= 4. BOTTOM SHEET MENU (MOBILE) ================= */
 .va-sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -81,21 +125,21 @@ body.va-in-topic-practice main {
   max-width: 520px;
   max-height: 82vh;
   overflow-y: auto;
-  background: #ffffff;
+  background: var(--va-card);
+  border-top: 1px solid var(--va-border);
   border-radius: 24px 24px 0 0;
   padding: 12px 16px calc(18px + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.2);
   transform: translateY(100%);
   transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.va-sheet-backdrop.active .va-sheet-panel {
-  transform: translateY(0);
-}
+.va-sheet-backdrop.active .va-sheet-panel { transform: translateY(0); }
 .va-sheet-handle {
   width: 40px;
   height: 4px;
   border-radius: 999px;
-  background: #cbd5e1;
+  background: #94a3b8;
+  opacity: 0.45;
   margin: 0 auto 12px;
 }
 .va-sheet-tile {
@@ -104,162 +148,141 @@ body.va-in-topic-practice main {
   gap: 8px;
   padding: 11px 12px;
   border-radius: 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--va-inner);
+  border: 1px solid var(--va-border);
   font-size: 13px;
   font-weight: 700;
-  color: #334155;
+  color: var(--va-text-sub);
   text-align: left;
   transition: all 0.15s ease;
 }
-.va-sheet-tile:active {
-  transform: scale(0.97);
+.va-sheet-tile:active { transform: scale(0.97); }
+
+/* ================= 5. ĐỒNG BỘ MÀU NHẤN XANH SKY (ÁP DỤNG CẢ LIGHT & DARK) ================= */
+.bg-indigo-600, .bg-indigo-500, .bg-blue-600, .from-indigo-600, .from-blue-600 {
+  background-image: none !important;
+  background-color: var(--va-primary) !important;
+  color: #ffffff !important;
+}
+.bg-indigo-600:hover, .bg-indigo-500:hover, .hover\:bg-indigo-700:hover, .hover\:bg-indigo-600:hover {
+  background-color: var(--va-primary-hover) !important;
+}
+.bg-indigo-600 *, .bg-indigo-500 *, .bg-emerald-600 *, .bg-rose-600 * {
+  color: #ffffff !important;
 }
 
-/* ================= CHẾ ĐỘ TỐI (DARK MODE • html.va-dark) ================= */
-html.va-dark body {
-  background-color: #0b1120 !important;
-  color: #e2e8f0 !important;
+.bg-indigo-50, .bg-indigo-50\/90, .bg-indigo-50\/80, .bg-indigo-50\/70,
+.bg-indigo-50\/40, .bg-indigo-50\/35, .bg-indigo-50\/30,
+.bg-indigo-100, .bg-indigo-100\/80, .bg-blue-50, .bg-blue-50\/50, .bg-sky-50 {
+  background-color: var(--va-accent-tint) !important;
 }
+
+.text-indigo-900, .text-indigo-800, .text-indigo-700, .text-indigo-600, .text-indigo-500, .text-blue-600 {
+  color: var(--va-accent) !important;
+}
+
+.border-indigo-300, .border-indigo-200, .border-indigo-200\/80, .border-indigo-200\/70,
+.border-indigo-100, .border-blue-200, .border-blue-100 {
+  border-color: var(--va-accent-border) !important;
+}
+.border-l-indigo-600 {
+  border-left-color: var(--va-primary) !important;
+}
+
+/* ================= 6. LỚP DARK MODE (DEEP SLATE DỊU MẮT) ================= */
 html.va-dark header,
-html.va-dark .va-sheet-panel,
 html.va-dark #va-mobile-bottom-nav,
 html.va-dark #floating-action-dock {
-  background-color: #111827 !important;
-  border-color: #1f2937 !important;
-}
-html.va-dark .bg-white,
-html.va-dark .bg-white\/95,
-html.va-dark .bg-white\/90,
-html.va-dark .bg-white\/70 {
-  background-color: #131c2e !important;
-}
-html.va-dark .bg-slate-50,
-html.va-dark .bg-slate-50\/90,
-html.va-dark .bg-slate-50\/80,
-html.va-dark .bg-slate-50\/70,
-html.va-dark .bg-slate-50\/40,
-html.va-dark .bg-slate-50\/35,
-html.va-dark .bg-slate-100,
-html.va-dark .bg-slate-200\/75,
-html.va-dark .va-sheet-tile {
-  background-color: #1e293b !important;
-}
-html.va-dark .bg-indigo-50,
-html.va-dark .bg-indigo-50\/90,
-html.va-dark .bg-indigo-50\/80,
-html.va-dark .bg-indigo-50\/70,
-html.va-dark .bg-indigo-50\/40,
-html.va-dark .bg-indigo-50\/35,
-html.va-dark .bg-indigo-50\/30,
-html.va-dark .bg-blue-50,
-html.va-dark .bg-sky-50 {
-  background-color: rgba(79, 70, 229, 0.16) !important;
-}
-html.va-dark .bg-emerald-50,
-html.va-dark .bg-emerald-50\/90,
-html.va-dark .bg-emerald-50\/70,
-html.va-dark .bg-emerald-50\/40,
-html.va-dark .bg-emerald-50\/35,
-html.va-dark .bg-emerald-50\/20,
-html.va-dark .bg-emerald-50\/15 {
-  background-color: rgba(16, 185, 129, 0.14) !important;
-}
-html.va-dark .bg-amber-50,
-html.va-dark .bg-amber-50\/80,
-html.va-dark .bg-amber-50\/70,
-html.va-dark .bg-orange-50 {
-  background-color: rgba(245, 158, 11, 0.15) !important;
-}
-html.va-dark .bg-rose-50,
-html.va-dark .bg-rose-50\/70,
-html.va-dark .bg-rose-100\/90 {
-  background-color: rgba(244, 63, 94, 0.16) !important;
-}
-html.va-dark .bg-purple-50,
-html.va-dark .bg-purple-50\/50 {
-  background-color: rgba(168, 85, 247, 0.15) !important;
-}
-html.va-dark .from-indigo-50\/80,
-html.va-dark .from-emerald-50\/90,
-html.va-dark .from-emerald-50\/80,
-html.va-dark .from-amber-50\/80,
-html.va-dark .from-amber-50\/60,
-html.va-dark .from-amber-50,
-html.va-dark .from-rose-50\/90,
-html.va-dark .from-rose-50 {
-  background-image: none !important;
-  background-color: #172033 !important;
-}
-html.va-dark .text-slate-900,
-html.va-dark .text-slate-800,
-html.va-dark .text-indigo-950,
-html.va-dark .text-amber-950 {
-  color: #f1f5f9 !important;
-}
-html.va-dark .text-slate-700,
-html.va-dark .va-sheet-tile {
-  color: #e2e8f0 !important;
-}
-html.va-dark .text-slate-600,
-html.va-dark .text-slate-500 {
-  color: #94a3b8 !important;
-}
-html.va-dark .text-indigo-900,
-html.va-dark .text-indigo-800,
-html.va-dark .text-indigo-700,
-html.va-dark .text-indigo-600 {
-  color: #a5b4fc !important;
-}
-html.va-dark .text-emerald-900,
-html.va-dark .text-emerald-800,
-html.va-dark .text-emerald-700 {
-  color: #6ee7b7 !important;
-}
-html.va-dark .text-amber-900,
-html.va-dark .text-amber-800,
-html.va-dark .text-amber-700,
-html.va-dark .text-orange-700 {
-  color: #fcd34d !important;
-}
-html.va-dark .text-rose-900,
-html.va-dark .text-rose-700 {
-  color: #fda4af !important;
-}
-html.va-dark .border-slate-100,
-html.va-dark .border-slate-200,
-html.va-dark .border-slate-200\/90,
-html.va-dark .border-slate-200\/80,
-html.va-dark .border-slate-300,
-html.va-dark .va-sheet-tile {
-  border-color: #273549 !important;
-}
-html.va-dark .border-indigo-200,
-html.va-dark .border-indigo-200\/80,
-html.va-dark .border-indigo-100 {
-  border-color: rgba(99, 102, 241, 0.35) !important;
-}
-html.va-dark .border-emerald-200,
-html.va-dark .border-emerald-300 {
-  border-color: rgba(16, 185, 129, 0.35) !important;
-}
-html.va-dark .border-amber-200,
-html.va-dark .border-orange-200\/70 {
-  border-color: rgba(245, 158, 11, 0.35) !important;
-}
-html.va-dark .border-rose-200 {
-  border-color: rgba(244, 63, 94, 0.35) !important;
-}
-html.va-dark input,
-html.va-dark textarea,
-html.va-dark select {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #334155 !important;
-}
-html.va-dark kbd {
-  background-color: #1e293b !important;
-  border-color: #475569 !important;
-  color: #cbd5e1 !important;
+  background-color: rgba(15, 23, 42, 0.94) !important;
+  border-color: var(--va-border) !important;
 }
 
+html.va-dark .bg-white, html.va-dark .bg-white\/95, html.va-dark .bg-white\/90,
+html.va-dark .bg-white\/80, html.va-dark .bg-white\/70 {
+  background-color: var(--va-card) !important;
+}
+
+html.va-dark .bg-slate-50, html.va-dark .bg-slate-50\/90, html.va-dark .bg-slate-50\/80,
+html.va-dark .bg-slate-50\/70, html.va-dark .bg-slate-50\/40, html.va-dark .bg-slate-50\/35,
+html.va-dark .bg-slate-100, html.va-dark .bg-slate-200\/75 {
+  background-color: var(--va-inner) !important;
+}
+html.va-dark .bg-slate-200, html.va-dark .bg-slate-300 {
+  background-color: #334155 !important;
+  color: var(--va-text) !important;
+}
+
+/* Nền trạng thái dịu mắt ở Dark Mode */
+html.va-dark .bg-emerald-50, html.va-dark .bg-emerald-50\/90, html.va-dark .bg-emerald-50\/70,
+html.va-dark .bg-emerald-50\/60, html.va-dark .bg-emerald-50\/40, html.va-dark .bg-emerald-50\/35,
+html.va-dark .bg-emerald-50\/20, html.va-dark .bg-emerald-50\/15, html.va-dark .bg-emerald-50\/10,
+html.va-dark .bg-emerald-100, html.va-dark .bg-emerald-100\/80,
+html.va-dark .from-emerald-50, html.va-dark .from-emerald-50\/90, html.va-dark .from-emerald-50\/80 {
+  background-image: none !important;
+  background-color: var(--va-emerald-tint) !important;
+}
+
+html.va-dark .bg-amber-50, html.va-dark .bg-amber-50\/80, html.va-dark .bg-amber-50\/70,
+html.va-dark .bg-amber-100, html.va-dark .bg-amber-100\/80, html.va-dark .bg-orange-50 {
+  background-color: var(--va-amber-tint) !important;
+}
+
+html.va-dark .bg-rose-50, html.va-dark .bg-rose-50\/90, html.va-dark .bg-rose-50\/80,
+html.va-dark .bg-rose-50\/70, html.va-dark .bg-rose-50\/60, html.va-dark .bg-rose-50\/50,
+html.va-dark .bg-rose-50\/40, html.va-dark .bg-rose-50\/15, html.va-dark .bg-rose-100,
+html.va-dark .bg-rose-100\/90, html.va-dark .from-rose-50, html.va-dark .from-rose-50\/90,
+html.va-dark .from-rose-50\/80, html.va-dark .to-pink-50, html.va-dark .to-rose-50 {
+  background-image: none !important;
+  background-color: var(--va-rose-tint) !important;
+  border-color: rgba(244, 63, 94, 0.28) !important;
+}
+
+html.va-dark .bg-purple-50, html.va-dark .bg-purple-50\/50,
+html.va-dark .bg-purple-100, html.va-dark .bg-purple-100\/90 {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+
+html.va-dark .from-indigo-50, html.va-dark .from-indigo-50\/90, html.va-dark .from-indigo-50\/80,
+html.va-dark .from-blue-50 {
+  background-image: none !important;
+  background-color: var(--va-accent-tint) !important;
+}
+html.va-dark .from-amber-50\/80, html.va-dark .from-amber-50\/60, html.va-dark .from-amber-50 {
+  background-image: none !important;
+  background-color: var(--va-inner) !important;
+}
+
+/* Chữ & Viền ở Dark Mode */
+html.va-dark .text-slate-900, html.va-dark .text-slate-800,
+html.va-dark .text-indigo-950, html.va-dark .text-amber-950 { color: var(--va-text) !important; }
+html.va-dark .text-slate-700 { color: var(--va-text-sub) !important; }
+html.va-dark .text-slate-600, html.va-dark .text-slate-500, html.va-dark .text-slate-400 { color: var(--va-text-muted) !important; }
+html.va-dark .text-emerald-900, html.va-dark .text-emerald-800, html.va-dark .text-emerald-700, html.va-dark .text-emerald-600 { color: var(--va-emerald) !important; }
+html.va-dark .text-amber-900, html.va-dark .text-amber-800, html.va-dark .text-amber-700, html.va-dark .text-orange-700 { color: var(--va-amber) !important; }
+html.va-dark .text-rose-900, html.va-dark .text-rose-700 { color: var(--va-rose) !important; }
+html.va-dark .text-purple-700, html.va-dark .text-purple-600 { color: #c084fc !important; }
+
+html.va-dark .border-slate-100, html.va-dark .border-slate-200, html.va-dark .border-slate-200\/90,
+html.va-dark .border-slate-200\/80, html.va-dark .border-slate-200\/70, html.va-dark .border-slate-300 {
+  border-color: var(--va-border) !important;
+}
+html.va-dark .border-emerald-200, html.va-dark .border-emerald-200\/70, html.va-dark .border-emerald-300 { border-color: rgba(52, 211, 153, 0.32) !important; }
+html.va-dark .border-amber-200, html.va-dark .border-amber-200\/80, html.va-dark .border-orange-200\/70 { border-color: rgba(245, 158, 11, 0.32) !important; }
+html.va-dark .border-rose-200, html.va-dark .border-rose-300 { border-color: rgba(244, 63, 94, 0.32) !important; }
+
+/* Ô nhập liệu & Phím tắt */
+html.va-dark input, html.va-dark textarea, html.va-dark select {
+  background-color: var(--va-inner) !important;
+  color: var(--va-text) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+}
+html.va-dark input:focus, html.va-dark textarea:focus, html.va-dark select:focus {
+  border-color: var(--va-accent) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2) !important;
+}
+html.va-dark input::placeholder, html.va-dark textarea::placeholder { color: #64748b !important; }
+html.va-dark kbd {
+  background-color: var(--va-inner) !important;
+  border-color: #475569 !important;
+  color: var(--va-text-sub) !important;
+}

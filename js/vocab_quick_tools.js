@@ -99,8 +99,8 @@
         const clean = normalizeWord(word);
         if (!clean) return false;
         try {
-            const list = JSON.parse(localStorage.getItem('va_vocab_notebook') || '[]');
-            return list.some(item => normalizeWord(item.word || item.en) === clean);
+            const list = JSON.parse(localStorage.getItem('va_vocab_bank') || '[]');
+            return list.some(item => normalizeWord(item.en || item.word) === clean);
         } catch (e) {
             return false;
         }
@@ -114,28 +114,35 @@
         const entry = lookupExactWord(word);
         if (!entry) return;
         try {
-            const key = 'va_vocab_notebook';
+            const key = 'va_vocab_bank';
             const list = JSON.parse(localStorage.getItem(key) || '[]');
-            if (!list.some(i => normalizeWord(i.word || i.en) === normalizeWord(entry.word))) {
+            if (!list.some(i => normalizeWord(i.en || i.word) === normalizeWord(entry.word))) {
                 list.unshift({
-                    id: Date.now(),
-                    word: entry.word,
+                    id: 'voc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    en: entry.word,
+                    vi: entry.vi || '',
                     ipa: entry.ipa || '',
                     pos: entry.pos || '',
-                    vi: entry.vi || '',
                     level: entry.level || 'A1',
+                    emoji: '📖',
+                    imageUrl: '',
+                    topic: 'Tra nhanh',
                     exampleEn: entry.example || '',
                     exampleVi: entry.exampleVi || '',
-                    createdAt: new Date().toISOString()
+                    mastered: false,
+                    foreverMastered: false,
+                    reviewStage: 0,
+                    nextReviewDue: null,
+                    addedAt: new Date().toISOString()
                 });
                 localStorage.setItem(key, JSON.stringify(list));
+                if (typeof window.updateNotebookBadge === 'function') window.updateNotebookBadge();
             }
             if (btnEl) {
                 btnEl.outerHTML = `<span class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] inline-flex items-center gap-1"><i class="fa-solid fa-check text-[9px]"></i>Đã lưu</span>`;
             }
         } catch (e) {}
     }
-
     // ==================== MỤC 2: NÚT "TRA NHANH" CẠNH Ô NHẬP DỊCH ====================
     function getTranslationInput() {
         return document.getElementById('user-translation');
@@ -230,6 +237,10 @@
                             <button type="button" onclick="window.__vaQuickSpeak('${encoded}')"
                                 class="w-7 h-7 rounded-full bg-white hover:bg-indigo-600 text-indigo-600 hover:text-white border border-slate-200 flex items-center justify-center transition-all" title="Nghe">
                                 <i class="fa-solid fa-volume-high text-[10px]"></i>
+                            </button>
+                            <button type="button" onclick="window.__vaQuickDetail('${encoded}')"
+                                class="w-7 h-7 rounded-full bg-white hover:bg-indigo-600 text-slate-600 hover:text-white border border-slate-200 flex items-center justify-center transition-all" title="Xem nhiều nghĩa & cụm từ">
+                                <i class="fa-solid fa-circle-info text-[11px]"></i>
                             </button>
                             ${canInsertIntoTranslationInput()
                                 ? `<button type="button" onclick="window.__vaQuickInsert('${encoded}')"
@@ -340,6 +351,10 @@
                             class="w-7 h-7 rounded-full bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white flex items-center justify-center transition-all" title="Nghe phát âm">
                             <i class="fa-solid fa-volume-high text-[11px]"></i>
                         </button>
+                        <button type="button" onclick="window.__vaQuickDetail('${encoded}')"
+                            class="w-7 h-7 rounded-full bg-slate-100 hover:bg-indigo-600 text-slate-600 hover:text-white flex items-center justify-center transition-all" title="Xem nhiều nghĩa & cụm từ">
+                            <i class="fa-solid fa-circle-info text-[11px]"></i>
+                        </button>
                         <button type="button" onclick="window.__vaClosePopover()"
                             class="w-7 h-7 rounded-full hover:bg-slate-100 text-slate-400 flex items-center justify-center">
                             <i class="fa-solid fa-xmark text-xs"></i>
@@ -412,6 +427,13 @@
     window.__vaQuickInsert = (enc) => insertWordIntoInput(decodeURIComponent(enc));
     window.__vaQuickSave = (enc, el) => quickSaveWord(decodeURIComponent(enc), el);
     window.__vaClosePopover = closeWordPopover;
+    window.__vaQuickDetail = (enc) => {
+        if (typeof window.openWordDetailModal === 'function') {
+            window.closeMiniLookup();
+            closeWordPopover();
+            window.openWordDetailModal(enc);
+        }
+    };
 
     function initQuickTools() {
         injectMiniLookupButton();

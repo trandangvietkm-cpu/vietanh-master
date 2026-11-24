@@ -514,6 +514,7 @@
                     failedSituations: state.failedSituations || {},
                     xpTracker: getXpTracker(),
                     reviewBox: JSON.parse(localStorage.getItem('va_review_box')) || [],
+                    errorLogs: JSON.parse(localStorage.getItem('va_error_logs')) || [],
                     notebook: state.notebook || [],
                     vocabStorage: vocabKeys
                 }
@@ -587,7 +588,9 @@
 
                 const restoredReview = Array.isArray(d.reviewBox) ? d.reviewBox : [];
                 localStorage.setItem('va_review_box', JSON.stringify(restoredReview));
-
+                if (Array.isArray(d.errorLogs)) {
+                    localStorage.setItem('va_error_logs', JSON.stringify(d.errorLogs));
+                }
                 state.notebook = Array.isArray(d.notebook) ? d.notebook : [];
                 localStorage.setItem('va_notebook', JSON.stringify(state.notebook));
 

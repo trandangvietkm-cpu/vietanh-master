@@ -1297,7 +1297,7 @@
         // Bảng màu nhận diện riêng cho 8 Chặng (tương thích cả Sáng & Tối)
         const STAGE_COLOR_THEMES = {
             1: { hex: '#4f46e5', soft: 'rgba(79, 70, 229, 0.11)', pillBg: 'rgba(79, 70, 229, 0.14)', pillText: '#4338ca' }, // Indigo
-            2: { hex: '#0284c7', soft: 'rgba(2, 132, 199, 0.11)', pillBg: 'rgba(2, 132, 199, 0.14)', pillText: '#0369a1' }, // Sky
+            2: { hex: '#2563eb', soft: 'rgba(2, 132, 199, 0.11)', pillBg: 'rgba(2, 132, 199, 0.14)', pillText: '#0369a1' }, // Sky
             3: { hex: '#059669', soft: 'rgba(5, 150, 105, 0.11)', pillBg: 'rgba(5, 150, 105, 0.14)', pillText: '#047857' }, // Emerald
             4: { hex: '#d97706', soft: 'rgba(217, 119, 6, 0.11)',  pillBg: 'rgba(217, 119, 6, 0.14)',  pillText: '#b45309' }, // Amber
             5: { hex: '#ea580c', soft: 'rgba(234, 88, 12, 0.11)',  pillBg: 'rgba(234, 88, 12, 0.14)',  pillText: '#c2410c' }, // Orange
@@ -1726,7 +1726,7 @@
                 { icon: 'fa-fire', title: 'Giữ lửa 3 ngày', desc: 'Streak kỷ lục ≥ 3', unlocked: longestStreak >= 3, color: '#ea580c' },
                 { icon: 'fa-calendar-week', title: 'Tuần lễ bền bỉ', desc: 'Streak kỷ lục ≥ 7', unlocked: longestStreak >= 7, color: '#d97706' },
                 { icon: 'fa-award', title: 'Chăm chỉ 20 câu', desc: 'Đạt ≥ 20 tình huống', unlocked: masteredCount >= 20, color: '#059669' },
-                { icon: 'fa-bookmark', title: 'Tích lũy từ vựng', desc: 'Lưu ≥ 10 từ/mẫu câu', unlocked: savedVocabCount >= 10, color: '#0284c7' },
+                { icon: 'fa-bookmark', title: 'Tích lũy từ vựng', desc: 'Lưu ≥ 10 từ/mẫu câu', unlocked: savedVocabCount >= 10, color: '#2563eb' },
                 { icon: 'fa-crown', title: 'Chinh phục 500 XP', desc: 'Tích lũy ≥ 500 XP', unlocked: xp >= 500, color: '#7c3aed' }
             ];
             const unlockedCount = badges.filter(b => b.unlocked).length;
