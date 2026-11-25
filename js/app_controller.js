@@ -857,11 +857,17 @@ function syncTopicSubTabButtonsUI(target) {
                 renderSituationStepper();
                 renderCurrentQuestion();
             } else {
+                if (state.activeCheckpointStageId === 'review_box') {
+                    const remainingReview = JSON.parse(localStorage.getItem('va_review_box')) || [];
+                    if (remainingReview.length === 0) {
+                        showReviewBoxCompleteModal();
+                        return;
+                    }
+                }
                 state.currentIndex = (state.currentIndex + 1) % state.filteredList.length;
                 renderCurrentQuestion();
             }
-        }
-
+             }
         // 8. CÁC HÀM TIỆN ÍCH (CLIPBOARD, TOAST, EXPONENTIAL BACKOFF)
         function copySentence(elementId) {
             const text = document.getElementById(elementId).innerText.replace(/^["']|["']$/g, '');
@@ -1057,3 +1063,34 @@ function syncTopicSubTabButtonsUI(target) {
         });
 
 // [Đã tách Tìm kiếm toàn màn hình, Hộp ôn tập & Modal Tâm sự tác giả sang: js/modals_search.js]
+function showReviewBoxCompleteModal() {
+            document.getElementById('va-review-complete-modal')?.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'va-review-complete-modal';
+            modal.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs';
+            modal.innerHTML = `
+                <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-7 text-center space-y-4">
+                    <div class="w-16 h-16 mx-auto rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl shadow-xs">
+                        <i class="fa-solid fa-trophy"></i>
+                    </div>
+                    <div class="space-y-1.5">
+                        <h3 class="text-lg sm:text-xl font-extrabold text-slate-900">Hộp ôn tập đã sạch bóng!</h3>
+                        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                            Tuyệt vời! Bạn đã hoàn thành toàn bộ các câu sai trong phiên này. Không còn câu nào chờ ôn nữa.
+                        </p>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2.5 pt-2">
+                        <button type="button" onclick="document.getElementById('va-review-complete-modal')?.remove(); switchTab('review');"
+                            class="flex-1 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-extrabold shadow-xs transition-all">
+                            Về Hộp ôn tập
+                        </button>
+                        <button type="button" onclick="document.getElementById('va-review-complete-modal')?.remove(); switchTab('home');"
+                            class="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition-all">
+                            Về Trang chủ
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }

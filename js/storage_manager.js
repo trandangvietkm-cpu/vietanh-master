@@ -1148,10 +1148,29 @@
                 });
             });
 
-            // 1. Dọn Hộp ôn tập (va_review_box)
+            // 1. Dọn Hộp ôn tập (va_review_box): bỏ ID mồ côi & tự gộp thẻ trùng lặp (giữ bản mới nhất)
             try {
                 const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-                const cleanedReview = reviewBox.filter(item => item && validSitIds.has(item.situationId));
+                const seenKeys = new Map();
+                const cleanedReview = [];
+
+                // Duyệt từ mới -> cũ để luôn giữ bản ghi cập nhật gần nhất
+                for (let i = reviewBox.length - 1; i >= 0; i--) {
+                    const item = reviewBox[i];
+                    if (!item || !validSitIds.has(item.situationId)) continue;
+
+                    const sidKey = `id:${String(item.situationId).trim()}`;
+                    const viKey = (typeof normalizeReviewMatchVi === 'function' && item.vi)
+                        ? `vi:${normalizeReviewMatchVi(item.vi)}`
+                        : '';
+
+                    if (seenKeys.has(sidKey) || (viKey && seenKeys.has(viKey))) continue;
+
+                    seenKeys.set(sidKey, true);
+                    if (viKey) seenKeys.set(viKey, true);
+                    cleanedReview.unshift(item);
+                }
+
                 if (cleanedReview.length !== reviewBox.length) {
                     localStorage.setItem('va_review_box', JSON.stringify(cleanedReview));
                 }
