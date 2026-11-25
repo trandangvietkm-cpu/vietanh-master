@@ -488,35 +488,50 @@
             }
         }
 
-        // ==================== SAO LƯU & KHÔI PHỤC TIẾN ĐỘ HỌC VIÊN (.JSON) ====================
-        function exportStudentProgressJSON() {
-            // Thu thập toàn bộ khóa từ vựng (nếu vocab_module.js đang dùng) mà KHÔNG bao giờ chạm tới va_gemini_api_key
-            const vocabKeys = {};
+        // ==================== SAO LƯU & KHÔI PHỤC TIẾN ĐỘ HỌC VIÊN (.JSON v2) ====================
+        function safeReadStorageJSON(key, fallback) {
             try {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const k = localStorage.key(i);
-                    if (k && /^va_vocab/i.test(k)) {
-                        vocabKeys[k] = localStorage.getItem(k);
-                    }
-                }
-            } catch (e) {}
+                const raw = localStorage.getItem(key);
+                if (raw === null || raw === undefined || raw === '') return fallback;
+                return JSON.parse(raw);
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        function exportStudentProgressJSON() {
+            const vocabBank = safeReadStorageJSON('va_vocab_bank', []);
 
             const payload = {
                 app: 'VietAnh Master',
                 type: 'student_progress_backup',
-                version: 1,
+                version: 2,
                 exportedAt: new Date().toISOString(),
                 data: {
-                    xp: state.xp || 0,
-                    streakMeta: getStreakMeta(),
-                    user: state.user || null,
-                    completedSituations: state.completedSituations || {},
-                    failedSituations: state.failedSituations || {},
-                    xpTracker: getXpTracker(),
-                    reviewBox: JSON.parse(localStorage.getItem('va_review_box')) || [],
-                    errorLogs: JSON.parse(localStorage.getItem('va_error_logs')) || [],
-                    notebook: state.notebook || [],
-                    vocabStorage: vocabKeys
+                    profile: state.user || safeReadStorageJSON('va_user', null),
+                    preferences: {
+                        theme: localStorage.getItem('va_theme') || 'light',
+                        ttsVoiceName: localStorage.getItem('va_tts_voice_name') || '',
+                        geminiModel: localStorage.getItem('va_gemini_model') || '',
+                        sidebarCollapsed: localStorage.getItem('va_ds_collapsed') === 'true'
+                    },
+                    progress: {
+                        xp: state.xp || 0,
+                        streakMeta: getStreakMeta(),
+                        completedSituations: state.completedSituations || {},
+                        failedSituations: state.failedSituations || {},
+                        xpTracker: getXpTracker(),
+                        dailyCounts: safeReadStorageJSON('va_daily_counts', {})
+                    },
+                    vocabBank: Array.isArray(vocabBank) ? vocabBank : [],
+                    notebook: Array.isArray(state.notebook) ? state.notebook : [],
+                    reviewBox: safeReadStorageJSON('va_review_box', []),
+                    errorLogs: safeReadStorageJSON('va_error_logs', []),
+                    activities: {
+                        dictationDone: safeReadStorageJSON('va_dictation_done', {}),
+                        adSpeak: safeReadStorageJSON('va_ad_speak_v1', {}),
+                        vocabQuizBest: Number(localStorage.getItem('va_vocab_quiz_best')) || 0
+                    }
                 }
             };
 
@@ -529,7 +544,7 @@
             URL.revokeObjectURL(url);
 
             if (typeof showToast === 'function') {
-                showToast('✅ Đã tải file sao lưu tiến độ (.json) về máy thành công!', 'success');
+                showToast('✅ Đã tải file sao lưu tiến độ chuẩn v2 (.json) về máy!', 'success');
             }
         }
 
@@ -540,22 +555,53 @@
             try {
                 const text = await file.text();
                 const parsed = JSON.parse(text);
+                const isV2 = parsed && parsed.type === 'student_progress_backup' && Number(parsed.version) >= 2 && parsed.data;
                 const d = (parsed && parsed.type === 'student_progress_backup' && parsed.data) ? parsed.data : parsed;
 
-                if (!d || (typeof d.xp === 'undefined' && !d.completedSituations && !d.notebook)) {
+                if (!d) {
                     throw new Error('File JSON không đúng định dạng sao lưu tiến độ của ViệtAnh Master.');
                 }
 
-                const completedCount = Object.keys(d.completedSituations || {}).length;
-                const notebookCount = Array.isArray(d.notebook) ? d.notebook.length : 0;
-                const streakNum = d.streakMeta?.current ?? 0;
+                // Chuẩn hóa dữ liệu chung cho cả bản v2 (mới) và v1 (cũ)
+                const progress = isV2 ? (d.progress || {}) : {
+                    xp: d.xp,
+                    streakMeta: d.streakMeta,
+                    completedSituations: d.completedSituations,
+                    failedSituations: d.failedSituations,
+                    xpTracker: d.xpTracker,
+                    dailyCounts: d.dailyCounts || {}
+                };
+
+                if (typeof progress.xp === 'undefined' && !progress.completedSituations && !d.notebook && !d.vocabBank) {
+                    throw new Error('File JSON không đúng định dạng sao lưu tiến độ của ViệtAnh Master.');
+                }
+
+                const profile = isV2 ? (d.profile || null) : (d.user || null);
+                const preferences = isV2 ? (d.preferences || {}) : {};
+                const activities = isV2 ? (d.activities || {}) : {};
+
+                // Giải mã vocabBank (hỗ trợ cả mảng chuẩn v2 lẫn chuỗi lồng trong vocabStorage ở v1)
+                let vocabBank = [];
+                if (Array.isArray(d.vocabBank)) {
+                    vocabBank = d.vocabBank;
+                } else if (d.vocabStorage && typeof d.vocabStorage.va_vocab_bank === 'string') {
+                    try {
+                        const parsedVocab = JSON.parse(d.vocabStorage.va_vocab_bank);
+                        if (Array.isArray(parsedVocab)) vocabBank = parsedVocab;
+                    } catch (e) {}
+                }
+
+                const completedCount = Object.keys(progress.completedSituations || {}).length;
+                const vocabCount = vocabBank.length;
+                const errorCount = Array.isArray(d.errorLogs) ? d.errorLogs.length : 0;
+                const streakNum = progress.streakMeta?.current ?? 0;
                 const expDate = parsed.exportedAt ? new Date(parsed.exportedAt).toLocaleString('vi-VN') : 'Không rõ';
 
                 const ok = confirm(
-                    `Khôi phục tiến độ từ file "${file.name}"?\n\n` +
+                    `Khôi phục tiến độ từ file "${file.name}" (bản v${parsed.version || 1})?\n\n` +
                     `• Thời điểm sao lưu: ${expDate}\n` +
-                    `• Điểm XP: ${d.xp || 0} XP | Chuỗi Streak: ${streakNum} ngày\n` +
-                    `• Số câu đã đạt: ${completedCount} câu | Sổ tay: ${notebookCount} mẫu câu\n\n` +
+                    `• Điểm XP: ${progress.xp || 0} XP | Chuỗi Streak: ${streakNum} ngày\n` +
+                    `• Câu đã đạt: ${completedCount} | Từ vựng Sổ tay: ${vocabCount} | Sổ lỗi: ${errorCount}\n\n` +
                     `(Tiến độ hiện tại trên trình duyệt này sẽ được thay bằng bản sao lưu. Khóa Gemini AI vẫn giữ nguyên.)`
                 );
                 if (!ok) {
@@ -563,46 +609,73 @@
                     return;
                 }
 
-                // Khôi phục dữ liệu vào localStorage & state
-                state.xp = Number(d.xp) || 0;
+                // 1. Khôi phục Tiến độ (progress)
+                state.xp = Number(progress.xp) || 0;
                 localStorage.setItem('va_xp', String(state.xp));
 
-                if (d.streakMeta && typeof d.streakMeta === 'object') {
-                    saveStreakMeta(d.streakMeta);
+                if (progress.streakMeta && typeof progress.streakMeta === 'object') {
+                    saveStreakMeta(progress.streakMeta);
                 }
 
-                if (d.user && typeof d.user === 'object') {
-                    state.user = d.user;
-                    localStorage.setItem('va_user', JSON.stringify(d.user));
-                }
-
-                state.completedSituations = (d.completedSituations && typeof d.completedSituations === 'object') ? d.completedSituations : {};
+                state.completedSituations = (progress.completedSituations && typeof progress.completedSituations === 'object') ? progress.completedSituations : {};
                 localStorage.setItem('va_completed_situations', JSON.stringify(state.completedSituations));
 
-                state.failedSituations = (d.failedSituations && typeof d.failedSituations === 'object') ? d.failedSituations : {};
+                state.failedSituations = (progress.failedSituations && typeof progress.failedSituations === 'object') ? progress.failedSituations : {};
                 localStorage.setItem('va_failed_situations', JSON.stringify(state.failedSituations));
 
-                if (d.xpTracker && typeof d.xpTracker === 'object') {
-                    saveXpTracker(d.xpTracker);
+                if (progress.xpTracker && typeof progress.xpTracker === 'object') {
+                    saveXpTracker(progress.xpTracker);
+                }
+                if (progress.dailyCounts && typeof progress.dailyCounts === 'object') {
+                    localStorage.setItem('va_daily_counts', JSON.stringify(progress.dailyCounts));
                 }
 
-                const restoredReview = Array.isArray(d.reviewBox) ? d.reviewBox : [];
-                localStorage.setItem('va_review_box', JSON.stringify(restoredReview));
-                if (Array.isArray(d.errorLogs)) {
-                    localStorage.setItem('va_error_logs', JSON.stringify(d.errorLogs));
+                // 2. Khôi phục Hồ sơ (profile)
+                if (profile && typeof profile === 'object') {
+                    state.user = profile;
+                    localStorage.setItem('va_user', JSON.stringify(profile));
                 }
+
+                // 3. Khôi phục Cài đặt cá nhân (preferences)
+                if (preferences.theme) {
+                    localStorage.setItem('va_theme', preferences.theme);
+                    document.documentElement.classList.toggle('dark', preferences.theme === 'dark');
+                }
+                if (typeof preferences.ttsVoiceName === 'string' && preferences.ttsVoiceName) {
+                    localStorage.setItem('va_tts_voice_name', preferences.ttsVoiceName);
+                }
+                if (typeof preferences.geminiModel === 'string' && preferences.geminiModel) {
+                    localStorage.setItem('va_gemini_model', preferences.geminiModel);
+                }
+                if (typeof preferences.sidebarCollapsed === 'boolean') {
+                    localStorage.setItem('va_ds_collapsed', String(preferences.sidebarCollapsed));
+                }
+
+                // 4. Khôi phục Từ vựng, Sổ tay, Hộp ôn tập & Sổ lỗi
+                localStorage.setItem('va_vocab_bank', JSON.stringify(vocabBank));
+
                 state.notebook = Array.isArray(d.notebook) ? d.notebook : [];
                 localStorage.setItem('va_notebook', JSON.stringify(state.notebook));
 
-                if (d.vocabStorage && typeof d.vocabStorage === 'object') {
-                    Object.entries(d.vocabStorage).forEach(([k, v]) => {
-                        if (/^va_vocab/i.test(k) && typeof v === 'string') {
-                            localStorage.setItem(k, v);
-                        }
-                    });
+                const restoredReview = Array.isArray(d.reviewBox) ? d.reviewBox : [];
+                localStorage.setItem('va_review_box', JSON.stringify(restoredReview));
+
+                if (Array.isArray(d.errorLogs)) {
+                    localStorage.setItem('va_error_logs', JSON.stringify(d.errorLogs));
                 }
 
-                // Đồng bộ lại toàn bộ giao diện
+                // 5. Khôi phục Các chế độ luyện tập phụ (activities)
+                if (activities.dictationDone && typeof activities.dictationDone === 'object') {
+                    localStorage.setItem('va_dictation_done', JSON.stringify(activities.dictationDone));
+                }
+                if (activities.adSpeak && typeof activities.adSpeak === 'object') {
+                    localStorage.setItem('va_ad_speak_v1', JSON.stringify(activities.adSpeak));
+                }
+                if (typeof activities.vocabQuizBest === 'number' && activities.vocabQuizBest > 0) {
+                    localStorage.setItem('va_vocab_quiz_best', String(activities.vocabQuizBest));
+                }
+
+                // 6. Đồng bộ lại toàn bộ giao diện
                 syncDailyStreakOnLoad();
                 cleanupOrphanedProgressIDs();
                 updateNotebookBadge();
@@ -612,7 +685,7 @@
                 if (typeof renderStructureLibrary === 'function') renderStructureLibrary();
 
                 if (typeof showToast === 'function') {
-                    showToast(`✅ Đã khôi phục tiến độ thành công (${state.xp} XP • ${completedCount} câu đã đạt)!`, 'success');
+                    showToast(`✅ Đã khôi phục tiến độ thành công (${state.xp} XP • ${completedCount} câu • ${vocabCount} từ)!`, 'success');
                 }
             } catch (err) {
                 if (typeof showToast === 'function') {
