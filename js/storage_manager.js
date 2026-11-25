@@ -116,9 +116,32 @@
 
 
     // 1. Kiểm tra và tự động đưa câu trả lời dưới 7.0 điểm vào Hộp ôn tập (hoặc xóa đi nếu đã đạt >= 7.0)
+    function normalizeReviewMatchVi(str) {
+        return String(str || '')
+            .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    }
+
+    // 1. Kiểm tra và tự động đưa câu trả lời dưới 7.0 điểm vào Hộp ôn tập (hoặc xóa đi nếu đã đạt >= 7.0)
     function checkAndAddToReviewBox(structId, situationId, score, userTranslation, viSentence = "") {
         let reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-        const existingIndex = reviewBox.findIndex(item => item.structId === structId && item.situationId === situationId);
+        const normVi = normalizeReviewMatchVi(viSentence);
+        const sidStr = situationId !== undefined && situationId !== null ? String(situationId).trim() : '';
+
+        const isSameReviewItem = (item) => {
+            if (!item || typeof item !== 'object') return false;
+            const itemSid = String(item.situationId || item.id || '').trim();
+            if (sidStr && itemSid && itemSid === sidStr) return true;
+            const itemVi = normalizeReviewMatchVi(item.vi);
+            return Boolean(normVi && itemVi && itemVi === normVi);
+        };
+
+        const matchedIndices = [];
+        reviewBox.forEach((item, idx) => {
+            if (isSameReviewItem(item)) matchedIndices.push(idx);
+        });
 
         if (score < 7.0) {
             const nextReviewDate = new Date();
@@ -134,16 +157,26 @@
                 nextReviewDue: nextReviewDate.toISOString()
             };
 
-            if (existingIndex >= 0) {
-                reviewBox[existingIndex] = reviewItem;
+            if (matchedIndices.length > 0) {
+                reviewBox[matchedIndices[0]] = reviewItem;
+                // Xóa các bản ghi trùng lặp phía sau (nếu có)
+                for (let i = matchedIndices.length - 1; i >= 1; i--) {
+                    reviewBox.splice(matchedIndices[i], 1);
+                }
             } else {
                 reviewBox.push(reviewItem);
             }
             localStorage.setItem('va_review_box', JSON.stringify(reviewBox));
-        } else if (existingIndex >= 0) {
-            // Nếu học viên làm lại và đạt >= 7.0 điểm -> Xóa khỏi Hộp ôn tập!
-            reviewBox.splice(existingIndex, 1);
+        } else if (matchedIndices.length > 0) {
+            // Đạt chuẩn (>= 7.0) -> Gỡ toàn bộ bản ghi khớp của câu này khỏi Hộp ôn tập
+            for (let i = matchedIndices.length - 1; i >= 0; i--) {
+                reviewBox.splice(matchedIndices[i], 1);
+            }
             localStorage.setItem('va_review_box', JSON.stringify(reviewBox));
+            if (typeof renderReviewPage === 'function') {
+                const viewReview = document.getElementById('view-review');
+                if (viewReview && !viewReview.classList.contains('hidden')) renderReviewPage();
+            }
             showToast("Tuyệt vời! Câu này đã đạt chuẩn và được đưa ra khỏi Hộp ôn tập.", "success");
         }
         updateReviewBadgeCount();
@@ -1310,3 +1343,33 @@
                 </div>
             `).join('');
         }
+    window.openBackupRestoreSection = function () {
+    if (typeof switchTab === 'function') {
+        switchTab('profile');
+    }
+
+    setTimeout(() => {
+        // 1. Ưu tiên tìm theo input/button sao lưu (không yêu cầu input phải hiện)
+        let targetEl = document.querySelector(
+            '[onchange*="importStudentProgressJSON"], [onclick*="exportStudentProgressJSON"]'
+        );
+
+        // 2. Nếu không thấy (hoặc nằm trong menu), tìm theo tiêu đề/nút có chữ "Sao lưu" hoặc "Khôi phục" đang hiển thị
+        if (!targetEl || targetEl.closest('#va-system-menu-sheet, .va-desktop-sidebar, nav')) {
+            const allEls = document.querySelectorAll('h2, h3, h4, button, label');
+            targetEl = Array.from(allEls).find(el => {
+                if (el.closest('#va-system-menu-sheet, .va-desktop-sidebar, nav')) return false;
+                if (el.offsetParent === null) return false;
+                const txt = (el.textContent || '').toLowerCase();
+                return txt.includes('sao lưu') || txt.includes('khôi phục');
+            }) || null;
+        }
+
+        if (targetEl) {
+            const targetBox = targetEl.closest('.rounded-2xl, .rounded-xl, section') || targetEl.parentElement || targetEl;
+            targetBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetBox.classList.add('ring-2', 'ring-indigo-400', 'transition-all');
+            setTimeout(() => targetBox.classList.remove('ring-2', 'ring-indigo-400'), 2000);
+        }
+    }, 350);
+};

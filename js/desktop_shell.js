@@ -48,6 +48,9 @@
                 <button type="button" class="va-ds-item" data-ds-key="quiz60" onclick="vaDesktopNav('quiz60')">
                     <i class="fa-solid fa-bolt"></i><span>Phản xạ 60s</span>
                 </button>
+                <button type="button" class="va-ds-item" data-ds-key="cloze" onclick="vaDesktopNav('cloze')">
+                    <i class="fa-solid fa-puzzle-piece"></i><span>Điền từ ngữ cảnh</span>
+                </button>
                 <button type="button" class="va-ds-item" data-ds-key="search" onclick="vaDesktopNav('search')">
                     <i class="fa-solid fa-magnifying-glass"></i><span>Tìm bài học</span>
                 </button>
@@ -62,7 +65,7 @@
                     <span id="va-ds-review-badge" class="va-ds-badge va-ds-badge-rose" style="display:none;">0</span>
                 </button>
                 <button type="button" class="va-ds-item" data-ds-key="backup" onclick="vaDesktopNav('backup')">
-                    <i class="fa-solid fa-download"></i><span>Sao lưu (.json)</span>
+                    <i class="fa-solid fa-download"></i><span>Sao lưu & Khôi phục</span>
                 </button>
             </nav>
 
@@ -199,6 +202,8 @@
                 const quizBtn = document.querySelector('[onclick*="Quiz"], [onclick*="quiz"]');
                 if (quizBtn) quizBtn.click();
             }
+        } else if (key === 'cloze') {
+            typeof switchTab === 'function' && switchTab('cloze');
         } else if (key === 'search') {
             typeof openGlobalSearchModal === 'function' && openGlobalSearchModal();
         } else if (key === 'notebook') {
@@ -206,10 +211,11 @@
         } else if (key === 'review') {
             typeof switchTab === 'function' && switchTab('review');
         } else if (key === 'backup') {
-            const backupBtn = Array.from(document.querySelectorAll('.va-sheet-tile, button'))
-                .find(b => (b.textContent || '').includes('Sao lưu'));
-            if (backupBtn && backupBtn.dataset.dsKey !== 'backup') backupBtn.click();
-            else if (typeof exportBackupData === 'function') exportBackupData();
+            if (typeof openBackupRestoreSection === 'function') {
+                openBackupRestoreSection();
+            } else if (typeof switchTab === 'function') {
+                switchTab('profile');
+            }
         } else if (key === 'profile') {
             typeof switchTab === 'function' && switchTab('profile');
         }
@@ -252,6 +258,7 @@
         if (isVisible('view-notebook')) activeKey = 'notebook';
         else if (isVisible('view-review')) activeKey = 'review';
         else if (isVisible('view-dictionary') || isVisible('view-vocab-library')) activeKey = 'dictionary';
+        else if (isVisible('view-cloze')) activeKey = 'cloze';
         else if (isVisible('view-practice')) {
             activeKey = isVisible('topic-mode-container') ? 'topic' : 'roadmap';
         }

@@ -5,7 +5,7 @@
  */
 
         function switchTab(tab) {
-            const targetTab = ['home', 'practice', 'notebook', 'review', 'dictionary', 'profile'].includes(tab)
+            const targetTab = ['home', 'practice', 'notebook', 'review', 'dictionary', 'profile', 'cloze'].includes(tab)
                 ? tab
                 : 'practice';
             state.activeTab = targetTab;
@@ -46,6 +46,9 @@
             } else if (targetTab === 'profile') {
                 document.getElementById('view-profile')?.classList.remove('hidden');
                 if (typeof window.onEnterProfileTab === 'function') window.onEnterProfileTab();
+            } else if (targetTab === 'cloze') {
+                 if (typeof window.onEnterClozeTab === 'function') window.onEnterClozeTab();
+                document.getElementById('view-cloze')?.classList.remove('hidden');
             } else {
                 document.getElementById('view-practice')?.classList.remove('hidden');
                 if (state.practiceMode === 'structure' && state.selectedStructureId) {
@@ -172,9 +175,11 @@ function syncTopicSubTabButtonsUI(target) {
                     const cpStageInfo = (state.activeCheckpointStageId && typeof getStageInfoById === 'function')
                         ? getStageInfoById(state.activeCheckpointStageId)
                         : null;
-                    const topicTitle = state.activeCheckpointStageId
-                        ? (cpStageInfo ? `Checkpoint ${cpStageInfo.shortTitle}` : 'Ôn trộn cuối Chặng')
-                        : (state.currentTopic && state.currentTopic !== 'all' ? (TOPIC_LABELS[state.currentTopic] || 'Chủ đề tự do') : 'Chủ đề tự do');
+                    const topicTitle = state.activeCheckpointStageId === 'review_box'
+                ? 'Phiên ôn tập câu sai'
+                : (state.activeCheckpointStageId
+                    ? (cpStageInfo ? `Checkpoint ${cpStageInfo.shortTitle}` : 'Ôn trộn cuối Chặng')
+                    : (state.currentTopic && state.currentTopic !== 'all' ? (TOPIC_LABELS[state.currentTopic] || 'Chủ đề tự do') : 'Chủ đề tự do'));
                     mountAudioDrillIntoPanel(state.filteredList, topicTitle, state.currentIndex || 0, null);
                 }
             } else {
@@ -526,7 +531,9 @@ function syncTopicSubTabButtonsUI(target) {
                     : `Ôn lại từ tình huống 1/${total}`;
             } else {
                 const topicTitle = TOPIC_LABELS[question.topic] || "Hàng ngày";
-                const cpPrefix = state.activeCheckpointStageId ? `🏆 Checkpoint • ` : '';
+                const cpPrefix = state.activeCheckpointStageId === 'review_box'
+                ? `🔄 Ôn câu sai • `
+                 : (state.activeCheckpointStageId ? `🏆 Checkpoint • ` : '');
                 document.getElementById('badge-topic').innerText = `${cpPrefix}${topicTitle}`;
                 document.getElementById('question-counter').innerText = `Câu ${state.currentIndex + 1} / ${state.filteredList.length}`;
                 document.getElementById('next-btn-label').innerText = "Câu tiếp theo";

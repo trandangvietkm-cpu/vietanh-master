@@ -198,6 +198,10 @@
                         <i class="fa-solid fa-book text-emerald-600"></i>
                         <span>Từ điển 3K</span>
                     </button>
+                    <button type="button" onclick="closeSystemMenuSheet(); switchTab('cloze');" class="va-sheet-tile">
+                        <i class="fa-solid fa-puzzle-piece text-indigo-600"></i>
+                        <span>Điền từ ngữ cảnh</span>
+                    </button>
                     <button type="button" onclick="closeSystemMenuSheet(); switchTab('notebook');" class="va-sheet-tile justify-between">
                         <span class="flex items-center gap-2 min-w-0"><i class="fa-solid fa-bookmark text-indigo-500"></i><span class="truncate">Sổ tay</span></span>
                         <span id="va-sheet-nb-badge" class="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-700">0</span>
@@ -210,9 +214,9 @@
                         <i class="fa-solid fa-magnifying-glass text-sky-500"></i>
                         <span>Tìm bài học</span>
                     </button>
-                    <button type="button" onclick="closeSystemMenuSheet(); if(typeof exportStudentProgressJSON==='function') exportStudentProgressJSON();" class="va-sheet-tile">
-                        <i class="fa-solid fa-download text-teal-600"></i>
-                        <span>Sao lưu (.json)</span>
+                    <button type="button" onclick="closeSystemMenuSheet(); if(typeof openBackupRestoreSection==='function') openBackupRestoreSection(); else if(typeof switchTab==='function') switchTab('profile');" class="va-sheet-tile">
+                    <i class="fa-solid fa-download text-teal-600"></i>
+                    <span>Sao lưu & Khôi phục</span>
                     </button>
                     <button type="button" onclick="closeSystemMenuSheet(); if(typeof toggleAuthorModal==='function') toggleAuthorModal(true);" class="va-sheet-tile">
                         <i class="fa-solid fa-envelope-open-text text-rose-500"></i>

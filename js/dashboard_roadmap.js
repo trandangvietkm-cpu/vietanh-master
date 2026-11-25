@@ -76,6 +76,10 @@
             switchTab('dictionary');
             return;
         }
+        if (skill === 'cloze') {
+            switchTab('cloze');
+            return;
+        }
         if (skill === 'quiz') {
             if (typeof openVocabQuizModal === 'function') {
                 openVocabQuizModal();
@@ -84,20 +88,20 @@
             }
         }
     };
-
     window.startTodayPlan = function () {
         const { todayCount } = syncTodayCompletedCounter();
-        const failedKeys = Object.keys(state.failedSituations || {}).filter(id => (state.completedSituations[id] || 0) < 7);
         const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
 
         if (todayCount < 5) {
             continueLearningFromHome();
-        } else if (failedKeys.length > 0 || reviewBox.length > 0) {
-            switchTab('review');
+        } else if (reviewBox.length > 0) {
+            if (typeof window.startReviewBoxSession === 'function') window.startReviewBoxSession(null);
+            else switchTab('review');
         } else {
             window.openQuickSkillMode('quiz');
         }
     };
+    
 
     // ==================== RENDER TRANG CHỦ MỚI: 6 KHỐI "BÀN HỌC HÔM NAY" ====================
     function renderHomeDashboard() {
@@ -121,26 +125,26 @@
             nextStructPct = nextStructTotal > 0 ? Math.round((nextStructDone / nextStructTotal) * 100) : 0;
         }
 
-        // Gom câu chưa đạt & Hộp ôn tập
-        const failedKeys = Object.keys(state.failedSituations || {}).filter(id => (state.completedSituations[id] || 0) < 7);
+        // Đồng bộ 1 nguồn duy nhất từ Hộp ôn tập (va_review_box) — khớp 100% với badge Sidebar
         const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-        const totalReviewNeed = failedKeys.length + reviewBox.length;
+        const totalReviewNeed = reviewBox.length;
+        const nowTs = Date.now();
 
-        // Trích 1 câu sai tiêu biểu để hiển thị trên Thẻ "Ôn câu đã sai"
+        // Ưu tiên lấy câu đến hạn hôm nay (hoặc câu đầu tiên) trong Hộp ôn tập để hiện trên Thẻ hồng
         let firstFailedItem = null;
-        if (failedKeys.length > 0) {
-            for (const struct of SENTENCE_STRUCTURES) {
-                const idx = (struct.situations || []).findIndex(s => failedKeys.includes(s.id));
-                if (idx !== -1) {
-                    firstFailedItem = {
-                        structId: struct.id,
-                        structName: struct.shortName || struct.title,
-                        sitIndex: idx,
-                        vi: struct.situations[idx].vi
-                    };
-                    break;
-                }
-            }
+        if (reviewBox.length > 0) {
+            const dueIdx = reviewBox.findIndex(item => {
+                const rawDue = item.nextReviewDue || item.nextReview || item.dueDate || 0;
+                return !rawDue || new Date(rawDue).getTime() <= nowTs;
+            });
+            const pickIdx = dueIdx !== -1 ? dueIdx : 0;
+            const picked = reviewBox[pickIdx];
+            const parentStruct = (SENTENCE_STRUCTURES || []).find(s => s.id === picked.structId);
+            firstFailedItem = {
+                reviewIdx: pickIdx,
+                structName: parentStruct ? (parentStruct.shortName || parentStruct.title) : 'Hộp ôn tập',
+                vi: picked.vi || 'Câu cần ôn tập'
+            };
         }
 
         const userName = (state.user && state.user.name) ? state.user.name : 'bạn';
@@ -241,7 +245,7 @@
                         <i class="fa-solid fa-chevron-right text-xs text-slate-400 shrink-0"></i>
                     </button>
 
-                    <button type="button" onclick="${firstFailedItem ? `jumpToSituation('${firstFailedItem.structId}', ${firstFailedItem.sitIndex})` : "switchTab('review')"}" class="w-full p-3.5 rounded-2xl border ${step2Done ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50/80 border-slate-200/80 hover:border-indigo-300'} flex items-center justify-between gap-3 text-left transition-all">
+                    <button type="button" onclick="${totalReviewNeed > 0 ? 'window.startReviewBoxSession(null)' : "switchTab('review')"}" class="w-full p-3.5 rounded-2xl border ${step2Done ? 'bg-emerald-50/60 border-emerald-200' : 'bg-slate-50/80 border-slate-200/80 hover:border-indigo-300'} flex items-center justify-between gap-3 text-left transition-all">
                         <div class="flex items-center gap-3 min-w-0">
                             <span class="w-7 h-7 rounded-full ${step2Done ? 'bg-emerald-600 text-white' : 'bg-rose-500 text-white'} text-xs font-extrabold flex items-center justify-center shrink-0">
                                 ${step2Done ? '<i class="fa-solid fa-check"></i>' : '2'}
@@ -284,14 +288,14 @@
                 </div>
                 ${firstFailedItem ? `
                     <div class="bg-white/90 rounded-2xl p-3.5 border border-rose-200/70">
-                        <div class="text-[11px] font-bold text-rose-600 mb-1">${firstFailedItem.structName} • Câu ${firstFailedItem.sitIndex + 1}</div>
+                    <div class="text-[11px] font-bold text-rose-600 mb-1">${firstFailedItem.structName}</div>
                         <p class="text-sm font-bold text-slate-800">"${firstFailedItem.vi}"</p>
                     </div>
                 ` : `
                     <p class="text-xs sm:text-sm text-rose-800">Bạn có <strong>${reviewBox.length} câu</strong> trong Hộp ôn tập định kỳ cần xem lại.</p>
                 `}
                 <div class="flex flex-wrap items-center gap-2.5 pt-0.5">
-                    <button type="button" onclick="${firstFailedItem ? `jumpToSituation('${firstFailedItem.structId}', ${firstFailedItem.sitIndex})` : "switchTab('review')"}"
+                     <button type="button" onclick="${firstFailedItem ? `window.startReviewBoxSession(${firstFailedItem.reviewIdx})` : "switchTab('review')"}"
                         class="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-extrabold shadow-xs transition-all">
                         Ôn ngay
                     </button>
@@ -312,13 +316,13 @@
         `;
 
         // --- KHỐI 5B: LỐI TẮT "LUYỆN TẬP NHANH" (NẰM NGAY DƯỚI KHỐI 5 TỪ GỢI Ý HÔM NAY) ---
-        const quickSkillsHTML = `
+       const quickSkillsHTML = `
             <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
                 <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
                     <i class="fa-solid fa-bolt text-amber-500"></i>
                     <span>Luyện tập nhanh</span>
                 </h3>
-                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                     <button type="button" onclick="openQuickSkillMode('translate')" class="p-3 rounded-2xl bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
                         <i class="fa-solid fa-language text-indigo-600 text-lg"></i>
                         <span class="text-xs font-extrabold text-slate-800">Luyện dịch câu</span>
@@ -335,9 +339,13 @@
                         <i class="fa-solid fa-book-atlas text-purple-600 text-lg"></i>
                         <span class="text-xs font-extrabold text-slate-800">Từ điển & Thẻ</span>
                     </button>
-                    <button type="button" onclick="openQuickSkillMode('quiz')" class="col-span-2 sm:col-span-1 p-3 rounded-2xl bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                    <button type="button" onclick="openQuickSkillMode('quiz')" class="p-3 rounded-2xl bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
                         <i class="fa-solid fa-stopwatch text-rose-600 text-lg"></i>
                         <span class="text-xs font-extrabold text-slate-800">Phản xạ 60s</span>
+                    </button>
+                    <button type="button" onclick="openQuickSkillMode('cloze')" class="p-3 rounded-2xl bg-amber-50/70 hover:bg-amber-100/80 border border-amber-200/70 flex flex-col items-center text-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-puzzle-piece text-amber-600 text-lg"></i>
+                        <span class="text-xs font-extrabold text-slate-800">Điền từ ngữ cảnh</span>
                     </button>
                 </div>
             </div>
@@ -1560,13 +1568,20 @@
             if (emptyStateEl) emptyStateEl.classList.add('hidden');
             if (cpTitle) cpTitle.innerText = `🏆 Ôn trộn cuối ${stageInfo.shortTitle} (${state.filteredList.length} câu)`;
             if (cpSub) cpSub.innerText = `${stageInfo.title} • Trộn ngẫu nhiên từ ${stageStructs.length} cấu trúc (không báo trước công thức).`;
+            const cpBackBtn = cpBanner ? cpBanner.querySelector('button[onclick*="exitStageCheckpointToRoadmap"]') : null;
+            if (cpBackBtn) cpBackBtn.innerHTML = `<i class="fa-solid fa-arrow-left mr-1"></i> Sơ đồ học`;
 
             renderCurrentQuestion();
             showToast(`🏆 Bắt đầu Trạm Ôn trộn cuối ${stageInfo.shortTitle} (${state.filteredList.length} câu)!`, "success");
         }
 
         function exitStageCheckpointToRoadmap() {
+            const wasReviewSession = state.activeCheckpointStageId === 'review_box';
             state.activeCheckpointStageId = null;
+            if (wasReviewSession) {
+                switchTab('review');
+                return;
+            }
             state.selectedStructureId = null;
             state.structViewMode = 'roadmap';
             switchPracticeMode('structure');
@@ -1584,17 +1599,29 @@
             }
             return el;
         }
-
-        function getSavedVocabCountForProfile() {
+        function getProfileNotebookBreakdown() {
+            let vocabCount = 0;
+            let masteredVocabCount = 0;
             try {
-                const nb = Array.isArray(state.notebook) ? state.notebook.length : 0;
-                const savedWords = JSON.parse(localStorage.getItem('va_vocab_notebook') || localStorage.getItem('va_saved_words') || '[]');
-                return Math.max(nb, Array.isArray(savedWords) ? savedWords.length : 0);
-            } catch (e) {
-                return Array.isArray(state.notebook) ? state.notebook.length : 0;
-            }
+                const vocabBank = JSON.parse(localStorage.getItem('va_vocab_bank') || '[]');
+                if (Array.isArray(vocabBank)) {
+                    vocabCount = vocabBank.length;
+                    masteredVocabCount = vocabBank.filter(v => v && (v.mastered || v.foreverMastered)).length;
+                }
+            } catch (e) {}
+            const sentenceCount = Array.isArray(state.notebook) ? state.notebook.length : 0;
+            return {
+                vocabCount,
+                masteredVocabCount,
+                sentenceCount,
+                total: vocabCount + sentenceCount
+            };
         }
 
+        function getSavedVocabCountForProfile() {
+            return getProfileNotebookBreakdown().total;
+        }
+        
         function getXpLevelInfo(xp) {
             const safeXp = Math.max(0, Number(xp) || 0);
             const xpPerLevel = 100;
@@ -1705,6 +1732,157 @@
           renderProfilePage();
       };    
         
+        window.openReviewFromProfileError = function (tag = 'all') {
+            if (typeof window.setReviewErrorTagFilter === 'function') {
+                window.setReviewErrorTagFilter(tag);
+            }
+            if (typeof window.setReviewViewMode === 'function') {
+                window.setReviewViewMode('queue');
+            }
+            if (typeof switchTab === 'function') {
+                switchTab('review');
+            }
+        };
+
+        function buildProfileErrorSummaryHTML() {
+            if (!window.ErrorTrackerService || typeof window.ErrorTrackerService.getStats !== 'function') {
+                return '';
+            }
+            const stats = window.ErrorTrackerService.getStats();
+
+            if (!stats || stats.totalLogs === 0) {
+                return `
+                    <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                <i class="fa-solid fa-bullseye"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h3 class="text-sm sm:text-base font-extrabold text-slate-900">Sổ lỗi hay gặp</h3>
+                                <p class="text-xs text-slate-500 mt-0.5">Chưa ghi nhận lỗi nào — hãy giữ vững phong độ nhé!</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const top3 = stats.ranked.slice(0, 3);
+            const maxCount = top3[0] ? top3[0].count : 1;
+
+            const top3HTML = top3.map(({ tag, count, meta }) => {
+                const pct = Math.max(12, Math.round((count / maxCount) * 100));
+                return `
+                    <button type="button" onclick="openReviewFromProfileError('${tag}')"
+                        class="w-full text-left p-3.5 rounded-2xl bg-slate-50 hover:bg-indigo-50/60 border border-slate-200/80 hover:border-indigo-300 transition-all space-y-1.5">
+                        <div class="flex items-center justify-between gap-2 text-xs">
+                            <span class="font-extrabold text-slate-800 truncate">${meta.label}</span>
+                            <span class="font-extrabold text-indigo-600 shrink-0">${count} lần</span>
+                        </div>
+                        <div class="w-full h-1.5 bg-slate-200/80 rounded-full overflow-hidden">
+                            <div class="h-full ${meta.barCls} rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+
+            return `
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                <i class="fa-solid fa-bullseye text-rose-500"></i>
+                                <span>Điểm cần khắc phục (${stats.totalLogs} lỗi)</span>
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Chạm vào từng nhóm lỗi để lọc và ôn lại ngay</p>
+                        </div>
+                        <button type="button" onclick="openReviewFromProfileError('all')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 text-xs font-extrabold transition-all">
+                            <span>Mở Sổ lỗi</span>
+                            <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        ${top3HTML}
+                    </div>
+                </div>
+            `;
+        }
+        window.openNotebookSubTabFromProfile = function (targetType) {
+            if (typeof switchTab === 'function') {
+                switchTab('notebook');
+            }
+            setTimeout(() => {
+                // Ưu tiên gọi hàm chuyển tab nếu có sẵn trong vocab_module.js
+                if (typeof window.switchNotebookSubTab === 'function') {
+                    window.switchNotebookSubTab(targetType === 'vocab' ? 'vocab' : 'sentences');
+                    return;
+                }
+                // Dự phòng: tự tìm nút tab bên trong #view-notebook theo nhãn chữ và bấm
+                const nbView = document.getElementById('view-notebook');
+                if (!nbView) return;
+                const btns = Array.from(nbView.querySelectorAll('button'));
+                const targetBtn = btns.find(b => {
+                    const txt = (b.textContent || '').toLowerCase();
+                    return targetType === 'vocab'
+                        ? txt.includes('từ vựng')
+                        : (txt.includes('mẫu câu') || txt.includes('câu đã lưu'));
+                });
+                if (targetBtn) targetBtn.click();
+            }, 80);
+        };
+
+        function buildProfileNotebookSummaryHTML() {
+            const { vocabCount, masteredVocabCount, sentenceCount, total } = getProfileNotebookBreakdown();
+
+            return `
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                                <i class="fa-solid fa-bookmark text-indigo-600"></i>
+                                <span>Sổ tay & Từ vựng (${total} mục)</span>
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Kho từ vựng và mẫu câu bạn đã lưu để ôn tập</p>
+                        </div>
+                        <button type="button" onclick="openNotebookSubTabFromProfile('vocab')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-xs font-extrabold transition-all">
+                            <span>Mở Sổ tay</span>
+                            <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button type="button" onclick="openNotebookSubTabFromProfile('vocab')"
+                            class="w-full text-left p-3.5 rounded-2xl bg-slate-50 hover:bg-indigo-50/60 border border-slate-200/80 hover:border-indigo-300 transition-all flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-spell-check"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-xs sm:text-sm font-extrabold text-slate-900">Từ vựng đã lưu</div>
+                                    <div class="text-[11px] text-slate-500">${vocabCount > 0 ? `${masteredVocabCount} từ đã thuộc` : 'Chưa lưu từ nào'}</div>
+                                </div>
+                            </div>
+                            <span class="text-base font-extrabold text-sky-600 shrink-0">${vocabCount} từ</span>
+                        </button>
+
+                        <button type="button" onclick="openNotebookSubTabFromProfile('sentences')"
+                            class="w-full text-left p-3.5 rounded-2xl bg-slate-50 hover:bg-indigo-50/60 border border-slate-200/80 hover:border-indigo-300 transition-all flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-quote-left"></i>
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="text-xs sm:text-sm font-extrabold text-slate-900">Mẫu câu đã lưu</div>
+                                    <div class="text-[11px] text-slate-500">${sentenceCount > 0 ? 'Lưu từ bài luyện dịch' : 'Chưa lưu mẫu câu nào'}</div>
+                                </div>
+                            </div>
+                            <span class="text-base font-extrabold text-indigo-600 shrink-0">${sentenceCount} câu</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
 
         function renderProfilePage() {
             const container = ensureProfileViewElement();
@@ -1721,13 +1899,34 @@
             const isDark = document.documentElement.classList.contains('va-dark');
 
             // Danh sách 6 huy hiệu offline
+            // Tính thêm chỉ số cho 6 huy hiệu mở rộng
+            const nbBreakdown = getProfileNotebookBreakdown();
+            let dictationDoneCount = 0;
+            try {
+                const dictObj = JSON.parse(localStorage.getItem('va_dictation_done') || '{}');
+                dictationDoneCount = Object.values(dictObj).filter(Boolean).length;
+            } catch (e) {}
+            const quizBestScore = Number(localStorage.getItem('va_vocab_quiz_best') || localStorage.getItem('va_quiz_best') || 0);
+            const perfectScoreCount = Object.values(state.completedSituations || {}).filter(s => Number(s) >= 10).length;
+            const completedStationsCount = (SENTENCE_STRUCTURES || []).filter(st =>
+                Array.isArray(st.situations) && st.situations.length > 0 &&
+                st.situations.every(sit => (state.completedSituations[sit.id] || 0) >= 7)
+            ).length;
+
+            // Danh sách 12 huy hiệu offline (4 hàng x 3 cột)
             const badges = [
                 { icon: 'fa-shoe-prints', title: 'Khởi hành', desc: 'Đạt câu đầu tiên', unlocked: masteredCount >= 1, color: '#4f46e5' },
                 { icon: 'fa-fire', title: 'Giữ lửa 3 ngày', desc: 'Streak kỷ lục ≥ 3', unlocked: longestStreak >= 3, color: '#ea580c' },
                 { icon: 'fa-calendar-week', title: 'Tuần lễ bền bỉ', desc: 'Streak kỷ lục ≥ 7', unlocked: longestStreak >= 7, color: '#d97706' },
                 { icon: 'fa-award', title: 'Chăm chỉ 20 câu', desc: 'Đạt ≥ 20 tình huống', unlocked: masteredCount >= 20, color: '#059669' },
                 { icon: 'fa-bookmark', title: 'Tích lũy từ vựng', desc: 'Lưu ≥ 10 từ/mẫu câu', unlocked: savedVocabCount >= 10, color: '#2563eb' },
-                { icon: 'fa-crown', title: 'Chinh phục 500 XP', desc: 'Tích lũy ≥ 500 XP', unlocked: xp >= 500, color: '#7c3aed' }
+                { icon: 'fa-crown', title: 'Chinh phục 500 XP', desc: 'Tích lũy ≥ 500 XP', unlocked: xp >= 500, color: '#7c3aed' },
+                { icon: 'fa-headphones', title: 'Đôi tai tinh tường', desc: 'Nghe chép ≥ 5 câu', unlocked: dictationDoneCount >= 5, color: '#0d9488' },
+                { icon: 'fa-bolt', title: 'Phản xạ tia chớp', desc: 'Phản xạ 60s ≥ 15 điểm', unlocked: quizBestScore >= 15, color: '#e11d48' },
+                { icon: 'fa-flag-checkered', title: 'Chinh phục Trạm', desc: 'Xong 100% ít nhất 1 trạm', unlocked: completedStationsCount >= 1, color: '#16a34a' },
+                { icon: 'fa-gem', title: 'Chuẩn bản xứ', desc: 'Đạt điểm 10/10 ≥ 10 câu', unlocked: perfectScoreCount >= 10, color: '#0284c7' },
+                { icon: 'fa-brain', title: 'Từ vựng nằm lòng', desc: 'Thuộc ≥ 10 từ trong sổ', unlocked: nbBreakdown.masteredVocabCount >= 10, color: '#9333ea' },
+                { icon: 'fa-trophy', title: 'Tháng rực rỡ', desc: 'Streak kỷ lục ≥ 30 ngày', unlocked: longestStreak >= 30, color: '#ca8a04' }
             ];
             const unlockedCount = badges.filter(b => b.unlocked).length;
 
@@ -1786,9 +1985,9 @@
                             <div class="text-[11px] font-semibold text-slate-500">Kỷ lục chuỗi</div>
                         </div>
                         <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-center">
-                            <div class="text-lg font-extrabold text-sky-600">${savedVocabCount}</div>
-                            <div class="text-[11px] font-semibold text-slate-500">Mục Sổ tay</div>
-                        </div>
+                       <div class="text-lg font-extrabold text-indigo-600">${unlockedCount}/${badges.length}</div>
+                       <div class="text-[11px] font-semibold text-slate-500">Huy hiệu</div>
+                   </div>
                     </div>
                 </div>
 
@@ -1816,7 +2015,11 @@
                         `).join('')}
                     </div>
                 </div>
+                <!-- Khối 2A: Sổ tay & Từ vựng -->
+             ${buildProfileNotebookSummaryHTML()}
 
+             <!-- Khối 2B: Sổ lỗi hay gặp -->
+             ${buildProfileErrorSummaryHTML()}
                 <!-- Khối 3: Sao lưu dữ liệu & Tiện ích -->
                 <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-2xs space-y-3.5">
                     <h3 class="text-base font-extrabold text-slate-900 flex items-center gap-2">

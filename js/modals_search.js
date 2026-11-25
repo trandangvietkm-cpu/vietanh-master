@@ -66,107 +66,126 @@ function removeFromReviewBoxByIndex(idx) {
     renderReviewPage();
 }
 
-function jumpToReviewBoxQuestionByIndex(idx) {
-    const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
-    const targetItem = reviewBox[idx];
-    if (!targetItem) {
-        closeReviewBoxModal();
-        showToast("Không tìm thấy mục ôn tập này.", "warning");
-        return;
-    }
-
+// Tìm đầy đủ dữ liệu câu hỏi cho 1 mục trong Hộp ôn tập (va_review_box)
+function resolveReviewBoxQuestionData(targetItem) {
+    if (!targetItem) return null;
     const candidateIds = [
-        targetItem.situationId,
-        targetItem.id,
-        targetItem.questionId,
-        targetItem.sitId,
-        targetItem.qId
+        targetItem.situationId, targetItem.id, targetItem.questionId, targetItem.sitId, targetItem.qId
     ].filter(v => v !== undefined && v !== null && String(v).trim() !== '').map(v => String(v).trim());
 
     const targetViNorm = normalizeReviewCompareText(getReviewItemViText(targetItem));
     const targetEnNorm = normalizeReviewCompareText(targetItem.en || targetItem.sampleCasual || targetItem.answer || '');
 
-    // 1. Tìm chính xác trong SENTENCE_STRUCTURES (ưu tiên khớp ID, sau đó khớp câu tiếng Việt hoặc đáp án tiếng Anh)
-    let foundStructId = null;
-    let foundSitIdx = -1;
-
     for (const struct of (SENTENCE_STRUCTURES || [])) {
         const sits = struct.situations || [];
-        let sitIdx = -1;
+        let sit = null;
+        if (candidateIds.length > 0) sit = sits.find(s => s && candidateIds.includes(String(s.id).trim()));
+        if (!sit && targetViNorm) sit = sits.find(s => s && normalizeReviewCompareText(s.vi) === targetViNorm);
+        if (!sit && targetEnNorm) sit = sits.find(s => s && normalizeReviewCompareText(s.sampleCasual) === targetEnNorm);
 
-        if (candidateIds.length > 0) {
-            sitIdx = sits.findIndex(s => s && s.id !== undefined && candidateIds.includes(String(s.id).trim()));
+        if (sit) {
+            return {
+                ...sit,
+                topic: typeof normalizeTopicKey === 'function' ? normalizeTopicKey(sit.topic, struct.topics) : (sit.topic || 'daily'),
+                structId: struct.id,
+                sourceStructId: struct.id,
+                sourceStructShortName: struct.shortName || struct.title,
+                sourceStageId: struct.stageId,
+                isStructureMode: false
+            };
         }
-        if (sitIdx === -1 && targetViNorm) {
-            sitIdx = sits.findIndex(s => s && normalizeReviewCompareText(s.vi) === targetViNorm);
-        }
-        if (sitIdx === -1 && targetEnNorm) {
-            sitIdx = sits.findIndex(s => s && normalizeReviewCompareText(s.sampleCasual) === targetEnNorm);
-        }
+    }
 
-        if (sitIdx !== -1) {
-            foundStructId = struct.id;
-            foundSitIdx = sitIdx;
-            break;
+    const bank = EXERCISE_BANK || [];
+    const matchedQ = bank.find(q =>
+        q && (
+            (candidateIds.length > 0 && candidateIds.includes(String(q.id).trim())) ||
+            (targetViNorm && normalizeReviewCompareText(q.vi) === targetViNorm) ||
+            (targetEnNorm && normalizeReviewCompareText(q.sampleCasual) === targetEnNorm)
+        )
+    );
+    return matchedQ ? { ...matchedQ, isStructureMode: false } : null;
+}
+
+// Mở Phiên Ôn Tập Câu Sai riêng (không nhảy lạc sang Sơ đồ học)
+window.startReviewBoxSession = function (startOrigIdx = null) {
+    const reviewBox = JSON.parse(localStorage.getItem('va_review_box')) || [];
+    if (reviewBox.length === 0) {
+        showToast("Hộp ôn tập hiện đang trống!", "info");
+        return;
+    }
+
+    const now = Date.now();
+    const activeTag = typeof window.getActiveReviewErrorTagFilter === 'function' ? window.getActiveReviewErrorTagFilter() : 'all';
+
+    // Nếu bấm từ Hộp ôn tập thì tôn trọng bộ lọc hiện tại; nếu bấm từ Trang chủ (startOrigIdx === null) thì lấy toàn bộ
+    let itemsWithIdx = reviewBox.map((item, origIdx) => {
+        const rawDue = item.nextReviewDue || item.nextReview || item.dueDate || item.reviewAt || 0;
+        const dueTs = rawDue ? new Date(rawDue).getTime() : 0;
+        return { item, origIdx, isDue: !dueTs || dueTs <= now };
+    });
+
+    if (startOrigIdx !== null) {
+        const filtered = itemsWithIdx.filter(x => {
+            if (reviewPageFilterMode === 'due' && !x.isDue) return false;
+            if (reviewPageFilterMode === 'upcoming' && x.isDue) return false;
+            if (activeTag !== 'all' && typeof window.getLatestErrorInfoForReviewItem === 'function') {
+                const errInfo = window.getLatestErrorInfoForReviewItem(x.item);
+                if (!errInfo || !Array.isArray(errInfo.errorTags) || !errInfo.errorTags.includes(activeTag)) return false;
+            }
+            return true;
+        });
+        if (filtered.some(x => x.origIdx === startOrigIdx)) {
+            itemsWithIdx = filtered;
         }
+    } else {
+        // Từ Trang chủ: ưu tiên đưa các câu đến hạn hôm nay lên đầu hàng đợi
+        itemsWithIdx.sort((a, b) => Number(b.isDue) - Number(a.isDue));
+    }
+
+    const queue = [];
+    let startPos = 0;
+    itemsWithIdx.forEach(({ item, origIdx }) => {
+        const resolved = resolveReviewBoxQuestionData(item);
+        if (resolved) {
+            if (startOrigIdx !== null && origIdx === startOrigIdx) startPos = queue.length;
+            queue.push(resolved);
+        }
+    });
+
+    if (queue.length === 0) {
+        showToast("Không tìm thấy dữ liệu câu hỏi tương ứng trong kho.", "warning");
+        return;
     }
 
     closeReviewBoxModal();
+    state.activeCheckpointStageId = 'review_box';
+    state.filteredList = queue;
+    state.currentIndex = startPos;
 
-    if (foundStructId && foundSitIdx !== -1) {
-        // Mở thẳng tab Luyện tập -> chế độ Cấu trúc -> đúng Trạm & đúng Câu (không qua bước chọn lọc)
-        switchTab('practice');
-        state.practiceMode = 'structure';
-        state.activeCheckpointStageId = null;
+    switchTab('practice');
+    switchPracticeMode('topic', true);
 
-        const structBtn = document.getElementById('mode-structure-btn');
-        const topicBtn = document.getElementById('mode-topic-btn');
-        const structContainer = document.getElementById('structure-mode-container');
-        const topicContainer = document.getElementById('topic-mode-container');
-        const topicEmptyEl = document.getElementById('topic-empty-state');
-        if (structBtn) structBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 text-white shadow-sm transition-all";
-        if (topicBtn) topicBtn.className = "flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-all";
-        if (structContainer) structContainer.classList.remove('hidden');
-        if (topicContainer) topicContainer.classList.add('hidden');
-        if (topicEmptyEl) topicEmptyEl.classList.add('hidden');
-        document.body.classList.remove('va-in-topic-practice');
+    const cpBanner = document.getElementById('checkpoint-mode-banner');
+    const cpTitle = document.getElementById('checkpoint-banner-title');
+    const cpSub = document.getElementById('checkpoint-banner-sub');
+    const topicFilterCard = document.getElementById('topic-filter-card');
+    const emptyStateEl = document.getElementById('topic-empty-state');
 
-        openStructureWorkspace(foundStructId);
-        selectSituation(foundSitIdx);
-        showToast("Đã mở thẳng câu cần ôn tập!", "success");
-        return;
-    }
+    if (cpBanner) cpBanner.classList.remove('hidden');
+    if (topicFilterCard) topicFilterCard.classList.add('hidden');
+    if (emptyStateEl) emptyStateEl.classList.add('hidden');
+    if (cpTitle) cpTitle.innerText = `🔄 Phiên ôn tập câu sai (${queue.length} câu)`;
+    if (cpSub) cpSub.innerText = `Trả lời đạt chuẩn câu sẽ tự động được gỡ khỏi Hộp ôn tập. Bấm Tiếp tục để chuyển sang câu kế tiếp.`;
+    const cpBackBtn = cpBanner ? cpBanner.querySelector('button[onclick*="exitStageCheckpointToRoadmap"]') : null;
+    if (cpBackBtn) cpBackBtn.innerHTML = `<i class="fa-solid fa-arrow-left mr-1"></i> Hộp ôn tập`;
 
-    // 2. Dự phòng: Tìm trong EXERCISE_BANK (Chủ đề tự do)
-    const bank = EXERCISE_BANK || [];
-    let bankIdx = -1;
-    if (candidateIds.length > 0) {
-        bankIdx = bank.findIndex(q => q && q.id !== undefined && candidateIds.includes(String(q.id).trim()));
-    }
-    if (bankIdx === -1 && targetViNorm) {
-        bankIdx = bank.findIndex(q => q && normalizeReviewCompareText(q.vi) === targetViNorm);
-    }
-    if (bankIdx === -1 && targetEnNorm) {
-        bankIdx = bank.findIndex(q => q && normalizeReviewCompareText(q.sampleCasual) === targetEnNorm);
-    }
+    renderCurrentQuestion();
+    showToast(`🔄 Đã mở Phiên ôn tập câu sai (${queue.length} câu)!`, "success");
+};
 
-    if (bankIdx !== -1) {
-        switchTab('practice');
-        switchPracticeMode('topic');
-        const matchedQ = bank[bankIdx];
-        const fIdx = (state.filteredList || []).findIndex(q => q && String(q.id) === String(matchedQ.id));
-        if (fIdx !== -1) {
-            state.currentIndex = fIdx;
-        } else {
-            state.filteredList = [matchedQ, ...(state.filteredList || [])];
-            state.currentIndex = 0;
-        }
-        renderCurrentQuestion();
-        showToast("Đã mở thẳng câu cần ôn tập!", "success");
-        return;
-    }
-
-    showToast("Câu này không còn trong kho dữ liệu hiện tại.", "warning");
+function jumpToReviewBoxQuestionByIndex(idx) {
+    window.startReviewBoxSession(idx);
 }
 
 let reviewPageFilterMode = 'all'; // 'all' | 'due' | 'upcoming'
@@ -202,6 +221,7 @@ function renderReviewBoxModal() {
 }
 
 function renderReviewPage() {
+    if (typeof window.syncSrsVocabTabInReview === 'function') window.syncSrsVocabTabInReview();
     const listEl = document.getElementById('review-page-list');
     const emptyEl = document.getElementById('review-page-empty');
     const filterBar = document.getElementById('review-filter-bar');
@@ -267,7 +287,6 @@ function renderReviewPage() {
             ? 'px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-amber-500 text-white shadow-2xs transition-all'
             : 'px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-all';
     }
-
     const activeTag = typeof window.getActiveReviewErrorTagFilter === 'function' ? window.getActiveReviewErrorTagFilter() : 'all';
     const filtered = enriched.filter(x => {
         if (reviewPageFilterMode === 'due' && !x.isDue) return false;
@@ -278,6 +297,20 @@ function renderReviewPage() {
         }
         return true;
     });
+
+    if (filterBar) {
+        let startAllBtn = document.getElementById('review-start-all-btn');
+        if (!startAllBtn) {
+            startAllBtn = document.createElement('button');
+            startAllBtn.id = 'review-start-all-btn';
+            startAllBtn.type = 'button';
+            startAllBtn.className = 'ml-auto inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-extrabold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-all';
+            filterBar.appendChild(startAllBtn);
+        }
+        startAllBtn.onclick = () => window.startReviewBoxSession(filtered[0]?.origIdx ?? null);
+        startAllBtn.innerHTML = `<i class="fa-solid fa-play text-[10px]"></i><span>Ôn tất cả (${filtered.length} câu)</span>`;
+        startAllBtn.classList.toggle('hidden', filtered.length === 0);
+    }
 
     if (filtered.length === 0) {
         listEl.innerHTML = `
