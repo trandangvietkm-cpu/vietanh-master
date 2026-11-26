@@ -1215,7 +1215,11 @@
                                     ${stageBadge}
                                 </div>
                                 <span class="text-xs font-bold ${isMastered ? 'text-emerald-600' : 'text-slate-500'}">
-                                    ${isMastered ? '<i class="fa-solid fa-crown text-amber-500 mr-1"></i>Đã hoàn thành' : `Đã đạt ${completedCount}/${totalSits}`}
+                                    ${getStationMasteryFlags(struct.id, isMastered).isFullyMastered
+                                     ? '<span class="text-amber-600"><i class="fa-solid fa-crown text-amber-500 mr-1"></i>Làm chủ Trạm</span>'
+                                     : (isMastered
+                                       ? '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Hoàn thành'
+                                      : `Đã đạt ${completedCount}/${totalSits}`)}
                                 </span>
                             </div>
 
@@ -1318,6 +1322,20 @@
             return STAGE_COLOR_THEMES[stageNumber] || STAGE_COLOR_THEMES[1];
         }
 
+        function getStageColorTheme(stageNumber) {
+            return STAGE_COLOR_THEMES[stageNumber] || STAGE_COLOR_THEMES[1];
+        }
+
+        function getStationMasteryFlags(structId, isPracticeDone) {
+            const ms = (window.VA_STATION_MILESTONE && typeof window.VA_STATION_MILESTONE.getProgress === 'function')
+                ? window.VA_STATION_MILESTONE.getProgress(structId)
+                : null;
+            const hasDictation = Boolean(ms && ms.dictation && ms.dictation.completedAt);
+            const hasAudioDrill = Boolean(ms && ms.audiodrill && ms.audiodrill.completedAt);
+            const isFullyMastered = Boolean(isPracticeDone && hasDictation && hasAudioDrill);
+            return { hasDictation, hasAudioDrill, isFullyMastered };
+        }
+
         function renderLearningRoadmap() {
             const container = document.getElementById('structure-roadmap-view');
             if (!container) return;
@@ -1390,34 +1408,43 @@
                     const done = (st.situations || []).filter(sit => (state.completedSituations[sit.id] || 0) >= 7).length;
                     const pct = total > 0 ? Math.round((done / total) * 100) : 0;
                     const isDone = total > 0 && done === total;
+                    const { isFullyMastered } = getStationMasteryFlags(st.id, isDone);
                     const isNext = nextRecommendedStruct && nextRecommendedStruct.id === st.id;
                     const isFocused = state.focusedRoadmapStructId === st.id;
 
-                    const nodeStyle = isDone
-                        ? 'background:#059669; color:#ffffff;'
-                        : (isFocused ? `background:${accentHex}; color:#ffffff;` : '');
+                    const nodeStyle = isFullyMastered
+                        ? 'background:#f59e0b; color:#ffffff;'
+                        : (isDone
+                            ? 'background:#059669; color:#ffffff;'
+                            : (isFocused ? `background:${accentHex}; color:#ffffff;` : ''));
 
                     const nodeClass = isFocused
                         ? 'ring-4 ring-slate-200/80 shadow-sm'
-                        : (isDone ? 'shadow-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200');
+                        : (isFullyMastered ? 'shadow-amber-200' : (isDone ? 'shadow-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'));
 
                     const cardClass = isFocused
-                        ? (isDone
-                            ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200 shadow-sm'
-                            : 'bg-indigo-50/25 shadow-sm')
-                        : (isDone
-                            ? 'border-emerald-200 bg-emerald-50/15 hover:border-emerald-400'
-                            : 'border-slate-200 bg-white hover:border-slate-300');
+                        ? (isFullyMastered
+                            ? 'border-amber-400 bg-amber-50/35 ring-2 ring-amber-200 shadow-sm'
+                            : (isDone
+                                ? 'border-emerald-500 bg-emerald-50/40 ring-2 ring-emerald-200 shadow-sm'
+                                : 'bg-indigo-50/25 shadow-sm'))
+                        : (isFullyMastered
+                            ? 'border-amber-300 bg-amber-50/15 hover:border-amber-400'
+                            : (isDone
+                                ? 'border-emerald-200 bg-emerald-50/15 hover:border-emerald-400'
+                                : 'border-slate-200 bg-white hover:border-slate-300'));
 
                     const cardFocusStyle = (isFocused && !isDone)
                         ? `border-color:${accentHex}; box-shadow: 0 0 0 2px ${theme.pillBg};`
                         : '';
 
-                    const statusPill = isDone
-                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-crown text-amber-500 mr-1"></i>Hoàn thành</span>`
-                        : (isNext
-                            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold text-white" style="background:${accentHex};">Tiếp theo</span>`
-                            : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">${done}/${total} câu</span>`);
+                    const statusPill = isFullyMastered
+                        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300"><i class="fa-solid fa-crown text-amber-500 mr-1"></i>Làm chủ Trạm</span>`
+                        : (isDone
+                            ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i>Hoàn thành</span>`
+                            : (isNext
+                                ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold text-white" style="background:${accentHex};">Tiếp theo</span>`
+                                : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">${done}/${total} câu</span>`));
 
                     const ctaStyle = isFocused
                         ? `background:${isDone ? '#059669' : accentHex}; color:#ffffff;`
@@ -1435,7 +1462,7 @@
                             <!-- Đường nối trạm bên trái -->
                             <div class="flex flex-col items-center pt-3">
                                 <div class="w-8 h-8 rounded-full font-extrabold text-xs flex items-center justify-center shrink-0 shadow-xs transition-all ${nodeClass}" style="${nodeStyle}">
-                                    ${isDone ? '<i class="fa-solid fa-check"></i>' : (idx + 1)}
+                                    ${isFullyMastered ? '<i class="fa-solid fa-crown"></i>' : (isDone ? '<i class="fa-solid fa-check"></i>' : (idx + 1))}
                                 </div>
                                 ${!isLastInStage ? `<div class="w-0.5 flex-1 my-1 rounded-full ${isDone ? 'bg-emerald-300' : 'bg-slate-200'}"></div>` : ''}
                             </div>

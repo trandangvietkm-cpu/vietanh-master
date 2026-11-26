@@ -565,7 +565,21 @@ function startAudioDrillCurrentItem() {
                 if (typeof stopAllPlayback === 'function') stopAllPlayback();
                 syncAudioDrillMediaSession();
                 updateAudioDrillUI();
-                if (typeof showToast === 'function') {
+
+                const activeStructId = audioDrillState.structId || ((typeof state !== 'undefined' && state.practiceMode === 'structure') ? state.selectedStructureId : null);
+                const structObj = activeStructId && Array.isArray(typeof SENTENCE_STRUCTURES !== 'undefined' ? SENTENCE_STRUCTURES : [])
+                    ? SENTENCE_STRUCTURES.find(s => s.id === activeStructId)
+                    : null;
+
+                if (structObj && window.VA_STATION_MILESTONE && typeof window.VA_STATION_MILESTONE.onSkillCompleted === 'function') {
+                    window.VA_STATION_MILESTONE.onSkillCompleted({
+                        struct: structObj,
+                        skillKey: 'audiodrill',
+                        completedCount: audioDrillState.situations.length,
+                        totalCount: audioDrillState.situations.length,
+                        bonusXp: 0
+                    });
+                } else if (typeof showToast === 'function') {
                     showToast('🎉 Tuyệt vời! Bạn đã hoàn thành trọn vòng Nghe–Nói!', 'success');
                 }
             }
@@ -1105,10 +1119,24 @@ function goNextDictationQuestion() {
     if (dictationTabState.index + 1 < total) {
         loadDictationQuestion(dictationTabState.index + 1, true);
     } else {
-        if (typeof showToast === 'function') {
+        const doneCount = dictationTabState.situations.filter(s => Boolean(dictationTabState.doneMap[s.id])).length;
+        const activeStructId = dictationTabState.structId || ((typeof state !== 'undefined' && state.practiceMode === 'structure') ? state.selectedStructureId : null);
+        const structObj = activeStructId && Array.isArray(typeof SENTENCE_STRUCTURES !== 'undefined' ? SENTENCE_STRUCTURES : [])
+            ? SENTENCE_STRUCTURES.find(s => s.id === activeStructId)
+            : null;
+
+        if (structObj && doneCount >= total && window.VA_STATION_MILESTONE && typeof window.VA_STATION_MILESTONE.onSkillCompleted === 'function') {
+            window.VA_STATION_MILESTONE.onSkillCompleted({
+                struct: structObj,
+                skillKey: 'dictation',
+                completedCount: doneCount,
+                totalCount: total,
+                bonusXp: 0
+            });
+        } else if (typeof showToast === 'function') {
             showToast('🎉 Tuyệt vời! Bạn đã hoàn thành Nghe chép trọn bộ Trạm này!', 'success');
         }
-        loadDictationQuestion(0, true);
+        loadDictationQuestion(0, false);
     }
 }
 

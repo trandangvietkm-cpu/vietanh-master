@@ -400,7 +400,7 @@ function _buildStationVocabCache(targetCount = 15) {
 
     const byStructId = new Map();
     const byItemId = new Map();
-    const globalSeen = new Set();
+    const globalAutoSeen = new Set();
 
     const stopWords = new Set([
         'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
@@ -415,27 +415,38 @@ function _buildStationVocabCache(targetCount = 15) {
         "isn't", "aren't", "don't", "doesn't", "didn't", "haven't", "hasn't"
     ]);
 
-    // Bỏ qua các gợi ý mang tính mẫu ngữ pháp (vd: "Is this...", "He isn't", "What is")
     const grammarPhraseRegex = /^(is|are|am|isn't|aren't|do|does|don't|doesn't|what|there|i'm|he's|she's|we're|they're|he isn't|they aren't)\b/i;
 
     for (const struct of allStructs) {
         if (!struct || !struct.id) continue;
         const picked = [];
+        const localSeen = new Set();
 
-        // BƯỚC 1: Ưu tiên từ soạn tay trong VOCAB_REPOSITORY_DATA (nhưng không trùng Trạm trước)
+        // ƯU TIÊN 1 (DATA-FIRST): Lấy trực tiếp từ biên soạn trong VOCAB_REPOSITORY_DATA
         const manualItems = repo.filter(item => item && item.structId === struct.id);
-        for (const item of manualItems) {
-            if (picked.length >= targetCount) break;
-            const normKey = _normalizeVocabKey(item.term);
-            if (!normKey || globalSeen.has(normKey)) continue;
+        if (manualItems.length > 0) {
+            for (const rawItem of manualItems) {
+                const term = String(rawItem.term || rawItem.word || '').trim();
+                const normKey = _normalizeVocabKey(term);
+                if (!normKey || localSeen.has(normKey)) continue;
 
-            globalSeen.add(normKey);
-            picked.push(item);
-            byItemId.set(item.id, item);
+                localSeen.add(normKey);
+                globalAutoSeen.add(normKey);
+
+                const normalizedItem = {
+                    ...rawItem,
+                    term,
+                    pos: rawItem.pos || rawItem.type || ''
+                };
+                picked.push(normalizedItem);
+                byItemId.set(normalizedItem.id, normalizedItem);
+            }
+            byStructId.set(struct.id, picked);
+            continue; // Đã có dữ liệu biên soạn chuẩn -> KHÔNG chạy tự trích xuất
         }
 
-        // BƯỚC 2: Nếu chưa đủ 15 từ -> Tự động trích xuất từ 15 câu tình huống của Trạm
-        if (picked.length < targetCount && Array.isArray(struct.situations)) {
+        // ƯU TIÊN 2 (DỰ PHÒNG): Chỉ tự trích xuất từ hints/keywords khi Trạm chưa có mảng vocab riêng
+        if (Array.isArray(struct.situations)) {
             let autoSeq = 1;
             for (const sit of struct.situations) {
                 if (picked.length >= targetCount) break;
@@ -450,12 +461,11 @@ function _buildStationVocabCache(targetCount = 15) {
                     let raw = String(c.term || '').replace(/\.{2,}|[?!.,]/g, '').trim();
                     if (!raw || grammarPhraseRegex.test(raw)) continue;
 
-                    // Gọt mạo từ đầu cụm nếu có (vd: "an accountant" -> "accountant", "the chef" -> "chef")
                     raw = raw.replace(/^(a|an|the)\s+/i, '').trim();
                     const rawLower = raw.toLowerCase();
                     const normKey = _normalizeVocabKey(raw);
 
-                    if (!normKey || normKey.length < 3 || stopWords.has(rawLower) || stopWords.has(normKey) || globalSeen.has(normKey)) {
+                    if (!normKey || normKey.length < 3 || stopWords.has(rawLower) || stopWords.has(normKey) || globalAutoSeen.has(normKey)) {
                         continue;
                     }
 
@@ -463,7 +473,7 @@ function _buildStationVocabCache(targetCount = 15) {
                     const viMeaning = String(c.vi || (dictEntry ? dictEntry.vi : '') || '').trim();
                     if (!viMeaning) continue;
 
-                    globalSeen.add(normKey);
+                    globalAutoSeen.add(normKey);
                     const autoItem = {
                         id: `auto_${struct.id}_${autoSeq++}`,
                         stageId: struct.stageId || '',
@@ -502,18 +512,79 @@ function speakStationVocabItem(vocabId, btnEl) {
         speakText(item.term, btnEl, 0.9);
     }
 }
-
 function saveStationVocabItem(vocabId, btnEl) {
     const cache = _buildStationVocabCache();
     const item = cache.byItemId.get(vocabId);
-    if (!item) return;
+    if (!item || !item.term) return;
 
-    if (typeof window.saveWordToVocabBank === 'function') {
-        window.saveWordToVocabBank(item.term, item.vi, btnEl);
-    } else {
-        showToast('Chức năng Sổ tay từ vựng chưa sẵn sàng.', 'warning');
+    let list = [];
+    try {
+        list = JSON.parse(localStorage.getItem('va_vocab_bank')) || [];
+    } catch (e) {}
+
+    const termLower = String(item.term).trim().toLowerCase();
+    if (list.some(v => String(v.en || '').trim().toLowerCase() === termLower)) {
+        if (typeof showToast === 'function') showToast(`Từ "${item.term}" đã có sẵn trong Sổ tay!`, 'info');
+        return;
+    }
+
+    // Tìm thông tin Trạm chứa từ vựng này
+    const allStructs = (typeof SENTENCE_STRUCTURES !== 'undefined' && Array.isArray(SENTENCE_STRUCTURES))
+        ? SENTENCE_STRUCTURES
+        : (Array.isArray(window.SENTENCE_STRUCTURES) ? window.SENTENCE_STRUCTURES : []);
+    const parentStruct = allStructs.find(s => s && s.id === item.structId) || null;
+
+    // Ưu tiên 1: Lấy đúng câu ví dụ đã biên soạn trong data/stage_x.js
+    let exEn = String(item.exampleEn || '').trim();
+    let exVi = String(item.exampleVi || '').trim();
+
+    // Ưu tiên 2 (Dự phòng): Nếu chưa biên soạn ví dụ, tìm đúng câu trong Trạm có chứa từ đó
+    if (!exEn && parentStruct && Array.isArray(parentStruct.situations)) {
+        const matchedSit = parentStruct.situations.find(sit => {
+            const sample = String(sit.sampleCasual || '').toLowerCase();
+            return sample.includes(termLower);
+        });
+        if (matchedSit) {
+            exEn = matchedSit.sampleCasual || '';
+            exVi = matchedSit.vi || '';
+        }
+    }
+
+    list.unshift({
+        id: 'voc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        en: item.term,
+        vi: item.vi || '',
+        ipa: item.ipa || '',
+        pos: item.pos || '',
+        level: item.level || (parentStruct ? parentStruct.level : 'A1'),
+        emoji: '📘',
+        imageUrl: '',
+        topic: parentStruct ? (parentStruct.shortName || parentStruct.title) : 'Từ vựng trọng tâm',
+        exampleEn: exEn,
+        exampleVi: exVi,
+        mastered: false,
+        foreverMastered: false,
+        reviewStage: 0,
+        nextReviewDue: null,
+        addedAt: new Date().toISOString()
+    });
+
+    localStorage.setItem('va_vocab_bank', JSON.stringify(list));
+    if (typeof addXP === 'function') addXP(2);
+    if (typeof window.updateNotebookBadge === 'function') window.updateNotebookBadge();
+
+    if (btnEl) {
+        const savedBadge = document.createElement('span');
+        savedBadge.className = 'px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11px] inline-flex items-center gap-1 shrink-0';
+        savedBadge.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>Đã lưu';
+        btnEl.replaceWith(savedBadge);
+    }
+
+    if (typeof showToast === 'function') {
+        showToast(`✨ Đã lưu "${item.term}" vào Sổ tay từ vựng (+2 XP)!`, 'success');
     }
 }
+
 
 function renderStationVocabInTheory(struct) {
     const box = document.getElementById('ws-station-vocab-box');

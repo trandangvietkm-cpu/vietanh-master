@@ -1296,8 +1296,7 @@ window.openQuickAddVocabModal = function (editId = null) {
         `;
     };
 
-
-  window.handleQuickAddVocabSubmit = function (e) {
+    window.handleQuickAddVocabSubmit = function (e) {
         e.preventDefault();
         const editId = document.getElementById('custom-vocab-edit-id')?.value || '';
         const en = document.getElementById('custom-vocab-en').value.trim();
@@ -1318,6 +1317,7 @@ window.openQuickAddVocabModal = function (editId = null) {
 
         saveLearnedViMeaningCache(en, vi);
         const list = getVocabBank();
+
         if (editId) {
             const idx = list.findIndex(i => i.id === editId);
             if (idx !== -1) {
@@ -1338,44 +1338,79 @@ window.openQuickAddVocabModal = function (editId = null) {
             document.getElementById('quick-add-vocab-modal')?.remove();
             renderVocabSection();
             if (typeof showToast === 'function') showToast(`Đã cập nhật từ "${en}"!`, "success");
-        } else {
-            const newId = 'voc_' + Date.now();
-            list.unshift({
-                id: newId,
+            return;
+        }
+
+        // Kiểm tra trùng lặp khi Tự thêm mới -> Hỏi cập nhật đè (giữ nguyên tiến độ SRS, không cộng trùng XP)
+        const dupIdx = list.findIndex(i => String(i.en || '').trim().toLowerCase() === en.toLowerCase());
+        if (dupIdx !== -1) {
+            const ok = confirm(
+                `Từ "${en}" đã có sẵn trong Sổ tay.\n\nBạn có muốn cập nhật đè nghĩa, IPA và ví dụ mới vào thẻ cũ (vẫn giữ nguyên tiến độ ôn tập) không?`
+            );
+            if (!ok) return;
+
+            const updatedItem = {
+                ...list[dupIdx],
                 en,
                 vi,
+                level,
+                pos: pos || list[dupIdx].pos || '',
                 ipa: formattedIpa,
                 emoji,
-                imageUrl,
-                level: level,
-                pos: pos,
-                topic: 'Tự ghi chép',
-                exampleEn: ex,
-                exampleVi: exVi,
-                mastered: false,
-                foreverMastered: false,
-                reviewStage: 0,
-                nextReviewDue: null,
-                addedAt: new Date().toISOString()
-            });
+                imageUrl: imageUrl || list[dupIdx].imageUrl || '',
+                exampleEn: ex || list[dupIdx].exampleEn || '',
+                exampleVi: exVi || list[dupIdx].exampleVi || ''
+            };
+            list.splice(dupIdx, 1);
+            list.unshift(updatedItem);
+
             saveVocabBank(list);
-            if (!rawIpa) autoRefineSavedVocabIPA(newId, en);
+            if (!rawIpa) autoRefineSavedVocabIPA(updatedItem.id, en);
             document.getElementById('quick-add-vocab-modal')?.remove();
             renderVocabSection();
-            if (typeof addXP === 'function') addXP(2);
-            if (typeof showToast === 'function') showToast(`✨ Đã thêm "${en}" vào Kho từ vựng (+2 XP)!`, "success");
-
-            // Làm mới trạng thái viền xanh lá cho Ô từ ở "Câu trả lời chuẩn"
-            const resultPanel = document.getElementById('result-panel');
-            if (resultPanel) {
-                resultPanel.querySelectorAll('[data-vocab-clean-word]').forEach(cardBox => {
-                    if (cardBox.dataset.vocabCleanWord === en.toLowerCase()) {
-                        cardBox.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50/40');
-                    }
-                });
+            if (typeof showToast === 'function') {
+                showToast(`✅ Đã cập nhật đè thông tin mới cho từ "${en}" (giữ nguyên tiến độ ôn tập)!`, "success");
             }
+            return;
+        }
+
+        const newId = 'voc_' + Date.now();
+        list.unshift({
+            id: newId,
+            en,
+            vi,
+            ipa: formattedIpa,
+            emoji,
+            imageUrl,
+            level: level,
+            pos: pos,
+            topic: 'Tự ghi chép',
+            exampleEn: ex,
+            exampleVi: exVi,
+            mastered: false,
+            foreverMastered: false,
+            reviewStage: 0,
+            nextReviewDue: null,
+            addedAt: new Date().toISOString()
+        });
+        saveVocabBank(list);
+        if (!rawIpa) autoRefineSavedVocabIPA(newId, en);
+        document.getElementById('quick-add-vocab-modal')?.remove();
+        renderVocabSection();
+        if (typeof addXP === 'function') addXP(2);
+        if (typeof showToast === 'function') showToast(`✨ Đã thêm "${en}" vào Kho từ vựng (+2 XP)!`, "success");
+
+        // Làm mới trạng thái viền xanh lá cho Ô từ ở "Câu trả lời chuẩn"
+        const resultPanel = document.getElementById('result-panel');
+        if (resultPanel) {
+            resultPanel.querySelectorAll('[data-vocab-clean-word]').forEach(cardBox => {
+                if (cardBox.dataset.vocabCleanWord === en.toLowerCase()) {
+                    cardBox.classList.add('ring-2', 'ring-emerald-400', 'bg-emerald-50/40');
+                }
+            });
         }
     };
+    
 
     window.renderNotebook = safeRenderSentenceNotebook;
 

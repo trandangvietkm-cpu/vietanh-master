@@ -1081,11 +1081,22 @@
                     const struct = question.structureInfo;
                     const doneNow = struct.situations.filter(s => (state.completedSituations[s.id] || 0) >= 7).length;
                     if (prevBest < 7 && doneNow === struct.situations.length) {
-                        const bonusText = xpAwardInfo.bonusStructXp > 0 ? ` (+${xpAwardInfo.bonusStructXp} XP thưởng trọn bộ!)` : '';
-                        setTimeout(() => {
-                            showToast(`🎉 Chúc mừng! Bạn đã chinh phục trọn bộ ${struct.situations.length}/${struct.situations.length} tình huống của cấu trúc "${struct.shortName}"${bonusText}!`, "success");
-                        }, 400);
+                        if (window.VA_STATION_MILESTONE && typeof window.VA_STATION_MILESTONE.onSkillCompleted === 'function') {
+                            window.VA_STATION_MILESTONE.onSkillCompleted({
+                                struct,
+                                skillKey: 'practice',
+                                completedCount: doneNow,
+                                totalCount: struct.situations.length,
+                                bonusXp: xpAwardInfo.bonusStructXp || 0
+                            });
+                        } else {
+                            const bonusText = xpAwardInfo.bonusStructXp > 0 ? ` (+${xpAwardInfo.bonusStructXp} XP thưởng trọn bộ!)` : '';
+                            setTimeout(() => {
+                                showToast(`🎉 Chúc mừng! Bạn đã chinh phục trọn bộ ${struct.situations.length}/${struct.situations.length} tình huống của cấu trúc "${struct.shortName}"${bonusText}!`, "success");
+                            }, 400);
+                        }
                     }
+
                 } else {
                     const wasCompletedBefore = sessionMeta ? sessionMeta.wasCompletedBeforeVisit : (prevBest >= 7);
                     if (!wasCompletedBefore) {

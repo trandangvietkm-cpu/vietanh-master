@@ -295,14 +295,23 @@ function syncTopicSubTabButtonsUI(target) {
 
             // Đảm bảo nút Luyện Nghe–Nói (Audio Drill) xuất hiện trên thanh tiêu đề Trạm
             if (typeof ensureAudioDrillTriggerButton === 'function') ensureAudioDrillTriggerButton();
-
+            
             // Render dải Từ vựng trọng tâm của Trạm trong Tab Lý thuyết
             renderStationVocabInTheory(struct);
 
-            // Mặc định mở thẳng Tab Phòng luyện dịch (⚡)
-            switchWorkspaceSubTab('practice');
+            // Điều hướng thông minh theo trạng thái Trạm (sẵn sàng chuyển Next.js):
+            // - Trạm mới tinh (chưa đạt câu nào & chưa có câu sai) -> mở Tab Lý thuyết trước
+            // - Trạm đang học dở hoặc đã hoàn thành -> mở thẳng Tab Luyện dịch
+            const hasAnyAttempt = (struct.situations || []).some(sit =>
+                (state.completedSituations && (state.completedSituations[sit.id] || 0) >= 7) ||
+                (state.failedSituations && state.failedSituations[sit.id] !== undefined)
+            );
+            const initialTab = hasAnyAttempt ? 'practice' : 'theory';
+
+            switchWorkspaceSubTab(initialTab);
             renderSituationStepper();
             renderCurrentQuestion();
+            
         }
 
         function toggleFormulaBox() {
