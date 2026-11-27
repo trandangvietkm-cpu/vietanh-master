@@ -1,14 +1,23 @@
 /**
- * MODULE 5 (V2 — AUTO-DISCOVER MODEL): TRỢ LÝ GEMINI AI ĐỘC LẬP — MÔ HÌNH BYOK (js/gemini_assistant.js)
- * Nâng cấp V2:
- *  - Chuyển mặc định sang `gemini-flash-lite-latest` (luôn tự trỏ tới bản Flash-Lite mới nhất, không bị lỗi ngừng hỗ trợ model cũ).
- *  - Tự động di chuyển (auto-migrate) nếu trình duyệt đang lưu model cũ `gemini-2.5-flash-lite`.
- *  - Tích hợp nút "Quét model hỗ trợ" & cơ chế tự động dò model khả dụng từ API Key của chính người dùng khi gặp lỗi 404 / deprecated.
+ * MODULE 5 (V3 — DEDICATED PAGE & NEXT.JS READY): TRỢ LÝ GEMINI AI (js/gemini_assistant.js)
+ * - Chuyển hoàn toàn từ Modal sang Trang riêng (#view-ai-settings), xóa sạch code Modal cũ.
+ * - Có công tắc Quản trị viên (AI_CONFIG) bật/tắt tính năng nhập khóa cá nhân (BYOK).
+ * - Có công tắc Bật/Tắt AI cho người dùng (không cần xóa key).
+ * - Chuẩn bị sẵn cấu trúc 2 chế độ (BYOK + Pro System Key) để chuyển thẳng sang Next.js.
  */
 
 (function () {
+    // ==================== CẤU HÌNH QUẢN TRỊ VIÊN (FEATURE FLAGS) ====================
+    // Sau này chuyển sang Next.js chỉ cần đưa khối này vào biến môi trường (.env) hoặc Database
+    const AI_CONFIG = {
+        ALLOW_PERSONAL_API_KEY: true,   // Đổi thành false nếu muốn tắt chức năng nhập khóa cá nhân trên toàn web
+        ALLOW_SYSTEM_PRO_KEY: false,    // Bật true khi lên Next.js và có API khóa hệ thống cho bản trả phí
+        SHOW_PRO_PREVIEW_CARD: true     // Hiện thẻ giới thiệu Gói Pro (Sắp ra mắt) bên dưới thẻ BYOK
+    };
+
     const STORAGE_KEY_API = 'va_gemini_api_key';
     const STORAGE_KEY_MODEL = 'va_gemini_model';
+    const STORAGE_KEY_ENABLED = 'va_gemini_user_enabled';
     const STORAGE_KEY_CUSTOM_MODELS = 'va_gemini_discovered_models';
     const DEFAULT_MODEL = 'gemini-flash-lite-latest';
 
@@ -28,6 +37,7 @@
 
     const reevalCache = {};
     let explanationOpenMap = {};
+    let previousTabBeforeAI = 'home';
 
     function esc(str) {
         return String(str || '')
@@ -43,6 +53,30 @@
         } catch (e) {
             return '';
         }
+    }
+
+    function isUserAIEnabled() {
+        try {
+            const val = localStorage.getItem(STORAGE_KEY_ENABLED);
+            return val === null ? true : val === 'true';
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function setUserAIEnabled(flag) {
+        try {
+            localStorage.setItem(STORAGE_KEY_ENABLED, flag ? 'true' : 'false');
+        } catch (e) {}
+        updateHeaderGeminiButtonState();
+    }
+
+    // Kiểm tra tổng thể xem AI có đang sẵn sàng hoạt động không
+    function isGeminiReady() {
+        if (!isUserAIEnabled()) return false;
+        if (AI_CONFIG.ALLOW_SYSTEM_PRO_KEY) return true;
+        if (AI_CONFIG.ALLOW_PERSONAL_API_KEY && Boolean(getStoredKey())) return true;
+        return false;
     }
 
     function getStoredModel() {
@@ -124,7 +158,6 @@
                 return { id, label: display };
             });
 
-        // Sắp xếp ưu tiên các bản flash-lite mới nhất -> flash mới nhất -> các bản khác
         validModels.sort((a, b) => {
             const score = (id) => {
                 let s = 0;
@@ -214,7 +247,6 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    // Gọi Gemini REST API kèm tự động thử lại + xoay model dự phòng khi gặp lỗi quá tải (503/429) hoặc model cũ bị ngừng hỗ trợ (404)
     async function callGeminiJSON(promptText, responseSchema, overrideKey = null, overrideModel = null) {
         const key = (overrideKey !== null ? overrideKey : getStoredKey()).trim();
         const primaryModel = (overrideModel || getStoredModel()).trim();
@@ -236,7 +268,6 @@
                 throw err;
             }
 
-            // Nếu chỉ là quá tải tạm thời (503/429): chờ 1.5 giây thử lại chính model đó 1 lần trước khi xoay sang model dự phòng
             if (isOverload && !primaryPermanentlyUnavailable) {
                 await delayMs(1500);
                 try {
@@ -249,7 +280,6 @@
                 }
             }
 
-            // Xây danh sách model dự phòng để xoay vòng
             const fallbackCandidates = [];
             const suggestedMatch = (lastErr?.message || '').match(/models\/(gemini-[a-z0-9.\-]+)/ig);
             if (suggestedMatch) {
@@ -279,7 +309,6 @@
             for (const candModel of fallbackCandidates) {
                 try {
                     const result = await executeGenerateContentOnce(key, candModel, promptText, responseSchema);
-                    // Chỉ ghi đè model mặc định trong localStorage nếu model cũ bị ngừng hỗ trợ vĩnh viễn (404/deprecated)
                     if (overrideKey === null && primaryPermanentlyUnavailable) {
                         saveGeminiConfig(key, candModel);
                     }
@@ -296,10 +325,23 @@
         }
     }
 
-    // ==================== 1. NÚT CÀI ĐẶT GEMINI AI TRÊN HEADER (ICON-ONLY TRÊN MOBILE) ====================
+    // ==================== 1. NÚT CÀI ĐẶT GEMINI AI TRÊN HEADER ====================
     function injectHeaderGeminiButton() {
-        // Tự động chuyển model cũ nếu trình duyệt đã lưu từ bản trước
         getStoredModel();
+
+        // Tự động ẩn trang Cài đặt AI mỗi khi người dùng chuyển sang tab khác
+        if (typeof window.switchTab === 'function' && !window.__vaAiWrappedSwitchTab) {
+            const origSwitchTab = window.switchTab;
+            window.switchTab = function (tabName) {
+                const aiView = document.getElementById('view-ai-settings');
+                if (aiView) aiView.classList.add('hidden');
+                if (tabName && tabName !== 'ai-settings') {
+                    previousTabBeforeAI = tabName;
+                }
+                return origSwitchTab.apply(this, arguments);
+            };
+            window.__vaAiWrappedSwitchTab = true;
+        }
 
         if (document.getElementById('nav-gemini-key-btn')) return;
         const authArea = document.getElementById('user-auth-area');
@@ -308,9 +350,9 @@
         const btn = document.createElement('button');
         btn.id = 'nav-gemini-key-btn';
         btn.type = 'button';
-        btn.onclick = () => window.openGeminiSettingsModal();
+        btn.onclick = () => window.openGeminiSettingsPage();
         btn.className = 'relative w-9 h-9 sm:w-auto sm:h-auto flex items-center justify-center gap-1.5 sm:px-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-600 hover:text-purple-700 hover:bg-purple-50 transition-all';
-        btn.title = 'Cài đặt khóa Gemini AI cá nhân (BYOK)';
+        btn.title = 'Cài đặt trợ lý Gemini AI';
         btn.innerHTML = `
             <i class="fa-solid fa-wand-magic-sparkles text-purple-600 text-sm"></i>
             <span class="hidden lg:inline">Gemini AI</span>
@@ -324,15 +366,22 @@
     function updateHeaderGeminiButtonState() {
         const dot = document.getElementById('gemini-key-status-dot');
         const btn = document.getElementById('nav-gemini-key-btn');
-        const hasKey = Boolean(getStoredKey());
+        const ready = isGeminiReady();
+
         if (dot) {
-            if (hasKey) dot.classList.remove('hidden');
+            if (ready) dot.classList.remove('hidden');
             else dot.classList.add('hidden');
         }
         if (btn) {
-            btn.title = hasKey
-                ? `Gemini AI đã sẵn sàng (${getStoredModel()}) • Bấm để cài đặt`
-                : 'Chưa gắn khóa Gemini AI • Bấm để nhập khóa miễn phí từ Google';
+            if (!AI_CONFIG.ALLOW_PERSONAL_API_KEY && !AI_CONFIG.ALLOW_SYSTEM_PRO_KEY) {
+                btn.title = 'Tính năng Gemini AI đang tạm đóng';
+            } else if (ready) {
+                btn.title = `Gemini AI đang bật (${getStoredModel()}) • Bấm để cài đặt`;
+            } else if (getStoredKey() && !isUserAIEnabled()) {
+                btn.title = 'Gemini AI đang tạm tắt • Bấm để bật lại';
+            } else {
+                btn.title = 'Chưa gắn khóa Gemini AI • Bấm để cài đặt';
+            }
         }
     }
 
@@ -344,41 +393,78 @@
         ).join('');
     }
 
-    // ==================== 2. CỬA SỔ CÀI ĐẶT KHÓA GEMINI AI (BYOK MODAL) ====================
-    window.openGeminiSettingsModal = function () {
-        let modal = document.getElementById('gemini-byok-modal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'gemini-byok-modal';
-            modal.className = 'fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4';
-            modal.onclick = (e) => {
-                if (e.target === modal) modal.remove();
-            };
-            document.body.appendChild(modal);
+    // ==================== 2. TRANG CÀI ĐẶT GEMINI AI RIÊNG BIỆT (#view-ai-settings) ====================
+    window.openGeminiSettingsPage = function () {
+        let view = document.getElementById('view-ai-settings');
+        const mainEl = document.querySelector('main');
+        if (!view && mainEl) {
+            view = document.createElement('div');
+            view.id = 'view-ai-settings';
+            view.className = 'hidden space-y-5';
+            mainEl.appendChild(view);
         }
+        if (!view) return;
+
+        // Ẩn toàn bộ các trang/tab khác trong <main>
+        if (mainEl) {
+            Array.from(mainEl.children).forEach(child => {
+                if (child.id && child.id !== 'view-ai-settings') {
+                    child.classList.add('hidden');
+                }
+            });
+        }
+
+        // Gỡ class workspace mobile nếu đang ở trong phòng luyện tập
+        document.body.classList.remove('va-in-workspace', 'va-in-topic-practice');
+
+        view.classList.remove('hidden');
+        renderGeminiSettingsPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    // Giữ tên hàm cũ làm bí danh để tương thích ngược tuyệt đối nếu nơi khác có gọi
+    window.openGeminiSettingsModal = window.openGeminiSettingsPage;
+
+    window.closeGeminiSettingsPage = function () {
+        const view = document.getElementById('view-ai-settings');
+        if (view) view.classList.add('hidden');
+        if (typeof window.switchTab === 'function') {
+            window.switchTab(previousTabBeforeAI || 'home');
+        }
+    };
+
+    function renderGeminiSettingsPage() {
+        const view = document.getElementById('view-ai-settings');
+        if (!view) return;
 
         const currentKey = getStoredKey();
         const currentModel = getStoredModel();
+        const userEnabled = isUserAIEnabled();
+        const ready = isGeminiReady();
 
-        modal.innerHTML = `
-            <div class="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden">
-                <div class="bg-gradient-to-r from-indigo-600 via-purple-600 to-violet-600 px-6 py-4 text-white flex items-center justify-between">
+        const statusBadge = ready
+            ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Đang hoạt động</span>`
+            : (!userEnabled && currentKey)
+                ? `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800 border border-amber-200"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Đang tạm tắt</span>`
+                : `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-slate-100 text-slate-600 border border-slate-200"><span class="w-2 h-2 rounded-full bg-slate-400"></span>Chưa kết nối</span>`;
+
+        const byokSectionHTML = AI_CONFIG.ALLOW_PERSONAL_API_KEY ? `
+            <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
+                <div class="px-5 sm:px-6 py-4 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
                     <div class="flex items-center gap-2.5">
-                        <div class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-                            <i class="fa-solid fa-key text-amber-200"></i>
-                        </div>
+                        <span class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm shrink-0">
+                            <i class="fa-solid fa-key"></i>
+                        </span>
                         <div>
-                            <h3 class="font-extrabold text-base leading-tight">Cài đặt Gemini AI (BYOK)</h3>
-                            <p class="text-[11px] text-indigo-100">Dùng khóa API miễn phí từ tài khoản Google của bạn</p>
+                            <h3 class="font-extrabold text-sm sm:text-base text-slate-900">Chế độ 1: Khóa API cá nhân (Miễn phí • BYOK)</h3>
+                            <p class="text-xs text-slate-500">Tự dùng khóa miễn phí từ tài khoản Google của bạn</p>
                         </div>
                     </div>
-                    <button type="button" onclick="document.getElementById('gemini-byok-modal').remove()" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
+                    <span class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">Đang mở</span>
                 </div>
 
-                <div class="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
-                    <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-900 leading-relaxed space-y-1">
+                <div class="p-5 sm:p-6 space-y-5">
+                    <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs sm:text-sm text-emerald-900 leading-relaxed space-y-1">
                         <p class="font-extrabold flex items-center gap-1.5">
                             <i class="fa-solid fa-shield-halved text-emerald-600"></i>
                             An toàn & Riêng tư tuyệt đối
@@ -387,10 +473,10 @@
                     </div>
 
                     <div class="space-y-1.5">
-                        <label class="block text-xs font-bold text-slate-700">Gemini API Key của bạn</label>
+                        <label for="gemini-key-input" class="block text-xs sm:text-sm font-bold text-slate-700">Gemini API Key của bạn</label>
                         <div class="relative">
-                            <input id="gemini-key-input" type="password" value="${esc(currentKey)}" placeholder="AIzaSy..." autocomplete="off" class="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-200 font-mono text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500">
-                            <button type="button" onclick="toggleGeminiKeyVisibility()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs px-1.5 py-1" title="Hiện / Ẩn khóa">
+                            <input id="gemini-key-input" type="password" value="${esc(currentKey)}" placeholder="AIzaSy..." autocomplete="off" class="w-full pl-4 pr-11 py-3 rounded-xl border border-slate-200 font-mono text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <button type="button" onclick="toggleGeminiKeyVisibility()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 px-1.5 py-1" title="Hiện / Ẩn khóa">
                                 <i id="gemini-key-eye" class="fa-regular fa-eye"></i>
                             </button>
                         </div>
@@ -398,47 +484,119 @@
 
                     <div class="space-y-1.5">
                         <div class="flex items-center justify-between gap-2">
-                            <label class="block text-xs font-bold text-slate-700">Chọn mô hình (Model)</label>
-                            <button type="button" id="gemini-scan-models-btn" onclick="scanLiveModelsFromKey()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline">
-                                <i class="fa-solid fa-arrows-rotate mr-0.5"></i>Quét model hỗ trợ
+                            <label for="gemini-model-select" class="block text-xs sm:text-sm font-bold text-slate-700">Chọn mô hình (Model)</label>
+                            <button type="button" id="gemini-scan-models-btn" onclick="scanLiveModelsFromKey()" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline">
+                                <i class="fa-solid fa-arrows-rotate mr-1"></i>Quét model hỗ trợ
                             </button>
                         </div>
-                        <select id="gemini-model-select" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500"></select>
+                        <select id="gemini-model-select" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
                     </div>
 
-                    <div id="gemini-test-status" class="hidden p-3 rounded-xl text-xs font-semibold"></div>
+                    <div id="gemini-test-status" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-semibold"></div>
 
-                    <details class="bg-slate-50 rounded-2xl border border-slate-200/80 p-3.5 text-xs text-slate-600">
-                        <summary class="font-bold text-indigo-700 cursor-pointer select-none">
-                            <i class="fa-solid fa-circle-question mr-1"></i>Cách lấy Gemini API Key miễn phí trong 30 giây
-                        </summary>
-                        <ol class="list-decimal list-inside space-y-1.5 mt-2.5 leading-relaxed">
-                            <li>Mở <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="font-bold text-indigo-600 underline">aistudio.google.com/apikey</a> và đăng nhập bằng Gmail cá nhân.</li>
-                            <li>Bấm nút <strong>Create API key</strong> (miễn phí, không cần thẻ tín dụng).</li>
-                            <li>Sao chép chuỗi bắt đầu bằng <code>AIza...</code> và dán vào ô phía trên rồi bấm <strong>Lưu cài đặt</strong>.</li>
-                        </ol>
-                    </details>
-
-                    <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                        <div class="flex items-center gap-2">
-                            <button type="button" id="gemini-test-btn" onclick="testGeminiApiKeyConnection()" class="px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all">
-                                <i class="fa-solid fa-plug-circle-check mr-1"></i>Kiểm tra kết nối
+                    <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button" id="gemini-test-btn" onclick="testGeminiApiKeyConnection()" class="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all">
+                                <i class="fa-solid fa-plug-circle-check mr-1.5"></i>Kiểm tra kết nối
                             </button>
                             ${currentKey ? `
-                                <button type="button" onclick="clearUserGeminiApiKey()" class="px-3 py-2 rounded-xl text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all">
+                                <button type="button" onclick="clearUserGeminiApiKey()" class="px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all">
                                     Xóa khóa
                                 </button>
                             ` : ''}
                         </div>
-                        <button type="button" onclick="saveUserGeminiSettingsFromModal()" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition-all">
-                            Lưu cài đặt
+                        <button type="button" onclick="saveUserGeminiSettings()" class="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-extrabold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 shadow-sm transition-all">
+                            <i class="fa-solid fa-floppy-disk mr-1.5"></i>Lưu cài đặt
                         </button>
                     </div>
                 </div>
             </div>
+
+            <!-- Khối hướng dẫn 3 bước luôn hiển thị rõ ràng, không bị cắt màn hình -->
+            <div class="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 sm:p-6 space-y-3">
+                <h3 class="font-extrabold text-sm sm:text-base text-slate-900 flex items-center gap-2">
+                    <i class="fa-solid fa-circle-question text-indigo-600"></i>
+                    Cách lấy Gemini API Key miễn phí trong 30 giây
+                </h3>
+                <ol class="list-decimal list-inside space-y-2 text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    <li>Mở <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" class="font-bold text-indigo-600 underline">aistudio.google.com/apikey</a> và đăng nhập bằng Gmail cá nhân.</li>
+                    <li>Bấm nút <strong class="text-slate-800">Create API key</strong> (hoàn toàn miễn phí, không cần thẻ tín dụng).</li>
+                    <li>Sao chép chuỗi bắt đầu bằng <code class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 font-mono">AIza...</code>, quay lại đây dán vào ô phía trên rồi bấm <strong class="text-slate-800">Lưu cài đặt</strong>.</li>
+                </ol>
+            </div>
+        ` : `
+            <div class="bg-amber-50 border border-amber-200 rounded-3xl p-5 sm:p-6 text-sm text-amber-900 space-y-1.5">
+                <p class="font-extrabold flex items-center gap-2">
+                    <i class="fa-solid fa-lock text-amber-600"></i>
+                    Chức năng nhập khóa API cá nhân đang tạm đóng
+                </p>
+                <p class="text-xs sm:text-sm text-amber-800">Quản trị viên hiện đang tạm tắt chế độ tự nhập khóa API. Bạn vẫn có thể luyện dịch và chấm điểm ngoại tuyến (offline) bình thường.</p>
+            </div>
+        `;
+
+        const proPreviewHTML = AI_CONFIG.SHOW_PRO_PREVIEW_CARD ? `
+            <div class="bg-slate-50/90 rounded-3xl border border-dashed border-slate-300 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg shrink-0">
+                        <i class="fa-solid fa-crown"></i>
+                    </div>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="font-extrabold text-sm sm:text-base text-slate-800">Chế độ 2: Khóa hệ thống (Gói Pro)</h3>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-slate-200 text-slate-600">Sắp ra mắt</span>
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Dùng ngay trợ lý AI chấm điểm chuyên sâu & giải thích ngữ pháp mà không cần tự tạo khóa API.</p>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+
+        view.innerHTML = `
+            <!-- Header trang Cài đặt AI -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div class="flex items-start gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center text-xl shrink-0 shadow-sm">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-xl font-extrabold text-slate-900">Cài đặt Gemini AI</h2>
+                            ${statusBadge}
+                        </div>
+                        <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Quản lý trợ lý chấm điểm chuyên sâu và giải thích ngữ pháp tự động.</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeGeminiSettingsPage()" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-sm shrink-0">
+                    <i class="fa-solid fa-arrow-left"></i>
+                    <span>Quay lại</span>
+                </button>
+            </div>
+
+            <!-- Công tắc Bật / Tắt nhanh cho người dùng -->
+            <div class="bg-white px-5 sm:px-6 py-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between gap-4">
+                <div>
+                    <p class="text-sm font-extrabold text-slate-900">Kích hoạt trợ lý Gemini AI</p>
+                    <p class="text-xs text-slate-500">Bạn có thể tạm tắt AI bất cứ lúc nào để luyện dịch nhanh mà không cần xóa khóa.</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input type="checkbox" id="gemini-user-toggle" class="sr-only peer" ${userEnabled ? 'checked' : ''} onchange="toggleUserGeminiEnabled(this.checked)">
+                    <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+            </div>
+
+            ${byokSectionHTML}
+            ${proPreviewHTML}
         `;
 
         populateModelSelectElement(document.getElementById('gemini-model-select'), currentModel);
+    }
+
+    window.toggleUserGeminiEnabled = function (checked) {
+        setUserAIEnabled(Boolean(checked));
+        renderGeminiSettingsPage();
+        if (typeof showToast === 'function') {
+            showToast(checked ? '✅ Đã bật trợ lý Gemini AI.' : '⏸️ Đã tạm tắt trợ lý Gemini AI.', 'info');
+        }
     };
 
     window.scanLiveModelsFromKey = async function () {
@@ -449,32 +607,32 @@
 
         if (!key) {
             if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 text-amber-800 border border-amber-200';
                 statusEl.innerText = '⚠️ Hãy dán Gemini API Key trước rồi bấm Quét model hỗ trợ.';
             }
             return;
         }
 
-        if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-0.5"></i>Đang quét...`;
+        if (btn) btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Đang quét...`;
         try {
             const liveModels = await fetchAvailableModelsForKey(key);
             if (liveModels.length > 0 && selectEl) {
                 populateModelSelectElement(selectEl, liveModels[0].id);
                 if (statusEl) {
-                    statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
+                    statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
                     statusEl.innerText = `✅ Tìm thấy ${liveModels.length} model khả dụng cho khóa của bạn! Đã tự chọn: ${liveModels[0].id}.`;
                 }
             } else if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 text-amber-800 border border-amber-200';
                 statusEl.innerText = '⚠️ Không tìm thấy thêm model nào ngoài danh sách mặc định.';
             }
         } catch (err) {
             if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-50 text-rose-700 border border-rose-200';
                 statusEl.innerText = `❌ Không quét được model: ${err.message}`;
             }
         } finally {
-            if (btn) btn.innerHTML = `<i class="fa-solid fa-arrows-rotate mr-0.5"></i>Quét model hỗ trợ`;
+            if (btn) btn.innerHTML = `<i class="fa-solid fa-arrows-rotate mr-1"></i>Quét model hỗ trợ`;
         }
     };
 
@@ -491,11 +649,11 @@
         }
     };
 
-    window.saveUserGeminiSettingsFromModal = function () {
+    window.saveUserGeminiSettings = function () {
         const key = (document.getElementById('gemini-key-input')?.value || '').trim();
         const model = document.getElementById('gemini-model-select')?.value || DEFAULT_MODEL;
         saveGeminiConfig(key, model);
-        document.getElementById('gemini-byok-modal')?.remove();
+        renderGeminiSettingsPage();
         if (typeof showToast === 'function') {
             showToast(
                 key ? `✅ Đã lưu khóa Gemini AI (${model}) vào trình duyệt của bạn!` : 'Đã xóa khóa Gemini AI. Ứng dụng vẫn chấm offline bình thường.',
@@ -506,7 +664,7 @@
 
     window.clearUserGeminiApiKey = function () {
         saveGeminiConfig('', DEFAULT_MODEL);
-        document.getElementById('gemini-byok-modal')?.remove();
+        renderGeminiSettingsPage();
         if (typeof showToast === 'function') {
             showToast('Đã xóa khóa Gemini API khỏi trình duyệt.', 'info');
         }
@@ -520,7 +678,7 @@
         const btn = document.getElementById('gemini-test-btn');
         if (!key) {
             if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-amber-50 text-amber-800 border border-amber-200';
                 statusEl.innerText = '⚠️ Bạn hãy dán Gemini API Key vào ô trước khi kiểm tra nhé.';
             }
             return;
@@ -528,10 +686,10 @@
 
         if (btn) {
             btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Đang kiểm tra...`;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Đang kiểm tra...`;
         }
         if (statusEl) {
-            statusEl.className = 'p-3 rounded-xl text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200';
+            statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-50 text-slate-600 border border-slate-200';
             statusEl.innerText = `Đang kết nối thử tới ${model}...`;
         }
 
@@ -547,7 +705,6 @@
                 model
             );
 
-            // Nếu cơ chế dự phòng tự chọn được model mới hơn -> cập nhật luôn ô select
             if (selectEl && workingModel) {
                 populateModelSelectElement(selectEl, workingModel);
                 if (selectEl.value !== workingModel) {
@@ -560,23 +717,23 @@
             }
 
             if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-200';
                 statusEl.innerText = `✅ Kết nối thành công với ${workingModel}! Bấm "Lưu cài đặt" để bắt đầu dùng.`;
             }
         } catch (err) {
             if (statusEl) {
-                statusEl.className = 'p-3 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200';
+                statusEl.className = 'p-3.5 rounded-xl text-xs sm:text-sm font-bold bg-rose-50 text-rose-700 border border-rose-200';
                 statusEl.innerText = `❌ Kết nối thất bại: ${err.message || 'Khóa API không hợp lệ hoặc bị giới hạn mạng.'}`;
             }
         } finally {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-plug-circle-check mr-1"></i>Kiểm tra kết nối`;
+                btn.innerHTML = `<i class="fa-solid fa-plug-circle-check mr-1.5"></i>Kiểm tra kết nối`;
             }
         }
     };
 
-    // ==================== 3. THANH NÚT PHÚC KHẢO & GIẢI THÍCH AI (3 TRẠNG THÁI • BỐ CỤC GỌN) ====================
+    // ==================== 3. THANH NÚT PHÚC KHẢO & GIẢI THÍCH AI ====================
     function getReevalCacheKey(question, userText) {
         return `${question?.id || 'q'}::${(userText || '').trim().toLowerCase()}`;
     }
@@ -701,7 +858,6 @@
         } catch (e) {}
         const isExplainOpen = Boolean(explanationOpenMap[question.id] && cachedExplain);
 
-        // Câu dẫn & nhãn nút linh hoạt theo trạng thái hiện tại (Chưa đạt vs Đạt/Chuẩn xác)
         const currentVerdict = result?.verdict || ((result?.score >= 7 && result?.used_target_structure !== false) ? 'passed' : 'retry');
         const isAlreadyPassed = currentVerdict === 'passed' || currentVerdict === 'excellent';
         const leadText = isAlreadyPassed
@@ -741,7 +897,6 @@
             ${hasExternalExplainSlot ? '' : '<div id="gemini-explain-output"></div>'}
         `;
 
-        // Hộp Giải thích chi tiết luôn đặt bên dưới "Câu trả lời chuẩn & Luyện phát âm" (#gemini-explain-slot) để mắt đối chiếu câu viết & câu chuẩn trước
         renderExplanationOutputArea(question, isExplainOpen, cachedExplain);
     };
 
@@ -756,14 +911,16 @@
         if (localBox) localBox.classList.remove('hidden');
     };
 
-    // ==================== 4. HÀM GỌI GEMINI CHẤM CHUYÊN SÂU & ĐỒNG BỘ ƯU TIÊN ====================
+    // ==================== 4. HÀM GỌI GEMINI CHẤM CHUYÊN SÂU ====================
     window.runGeminiReEvaluation = async function () {
-        const key = getStoredKey();
-        if (!key) {
+        if (!isGeminiReady()) {
             if (typeof showToast === 'function') {
-                showToast('Hãy nhập Gemini API Key miễn phí của bạn để dùng tính năng Chấm bằng Gemini AI nhé!', 'info');
+                const msg = !isUserAIEnabled()
+                    ? 'Trợ lý Gemini AI đang tạm tắt. Hãy bật lại trong trang Cài đặt AI nhé!'
+                    : 'Hãy nhập Gemini API Key miễn phí của bạn để dùng tính năng Chấm bằng Gemini AI nhé!';
+                showToast(msg, 'info');
             }
-            window.openGeminiSettingsModal();
+            window.openGeminiSettingsPage();
             return;
         }
 
@@ -793,12 +950,9 @@ Hãy chấm công tâm theo NGỮ NGHĨA thực tế (chấp nhận các cách d
 
 Trả về JSON gồm:
 - verdict: "excellent" | "passed" | "retry"
-  * "excellent": đúng nghĩa tự nhiên, đúng cấu trúc mục tiêu, không sai ngữ pháp/từ vựng.
-  * "passed": đúng nghĩa và đúng cấu trúc mục tiêu, chỉ có lỗi hình thức nhỏ (viết hoa, dấu câu) hoặc diễn đạt hơi cứng một chút.
-  * "retry": sai nghĩa, dùng sai từ, thiếu trợ động từ câu hỏi, sai ngữ pháp đáng kể, hoặc chưa áp dụng đúng cấu trúc mục tiêu.
 - score: điểm quy đổi tương ứng (excellent: 9.0-10.0, passed: 7.0-8.5, retry: 1.0-6.0).
-- structure_ok: boolean (true nếu áp dụng đúng cấu trúc mục tiêu, hoặc true nếu là chế độ tự do).
-- meaning_ok: boolean (true nếu truyền tải đúng nghĩa câu gốc tiếng Việt).
+- structure_ok: boolean
+- meaning_ok: boolean
 - feedback_vi: nhận xét ngắn gọn 2-4 câu bằng tiếng Việt, chỉ rõ điểm đúng và lỗi sai cụ thể (nếu có).
 - suggested_fix: 1 câu tiếng Anh tự nhiên sửa sát nhất với câu học viên viết (để chuỗi rỗng "" nếu câu học viên đã hoàn hảo).`;
 
@@ -911,12 +1065,14 @@ Trả về JSON gồm:
             return;
         }
 
-        const key = getStoredKey();
-        if (!key) {
+        if (!isGeminiReady()) {
             if (typeof showToast === 'function') {
-                showToast('Hãy nhập Gemini API Key miễn phí của bạn để mở khóa Giải thích ngữ pháp chi tiết bằng AI!', 'info');
+                const msg = !isUserAIEnabled()
+                    ? 'Trợ lý Gemini AI đang tạm tắt. Hãy bật lại trong trang Cài đặt AI nhé!'
+                    : 'Hãy nhập Gemini API Key miễn phí của bạn để mở khóa Giải thích ngữ pháp chi tiết bằng AI!';
+                showToast(msg, 'info');
             }
-            window.openGeminiSettingsModal();
+            window.openGeminiSettingsPage();
             return;
         }
 
