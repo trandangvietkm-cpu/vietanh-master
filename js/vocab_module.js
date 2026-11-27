@@ -484,7 +484,7 @@
         if (vocabTabCount) vocabTabCount.innerText = vocabCount;
     }
 
-    window.saveWordToVocabBank = function (enText, viMeaning, btnEl = null) {
+   window.saveWordToVocabBank = function (enText, viMeaning, btnEl = null) {
         const cleanEn = (enText || "").trim();
         const cleanVi = (viMeaning || "").trim();
         if (!cleanEn) return;
@@ -500,19 +500,41 @@
         }
 
         const currentQ = (typeof getActiveQuestionObject === 'function') ? getActiveQuestionObject() : null;
-        const exampleEn = currentQ ? (currentQ.sampleCasual || "") : "";
-        const exampleVi = currentQ ? (currentQ.vi || "") : "";
-        const level = currentQ && typeof normalizeCEFRLevel === 'function' ? normalizeCEFRLevel(currentQ.level) : "A2";
-        const topicLabel = currentQ
-            ? (currentQ.isStructureMode && currentQ.structureInfo ? currentQ.structureInfo.shortName : (typeof TOPIC_LABELS !== 'undefined' && TOPIC_LABELS[currentQ.topic] ? TOPIC_LABELS[currentQ.topic] : "Giao tiếp"))
-            : "Từ vựng thực chiến";
+        const dictCore = (typeof window.VA_DICTIONARY_CORE === 'object' && window.VA_DICTIONARY_CORE) ? window.VA_DICTIONARY_CORE : null;
+        const dictEntry = dictCore ? dictCore[cleanEn.toLowerCase()] : null;
+
+        // Chỉ lấy câu đang học nếu câu đó thực sự chứa từ đang lưu
+        const currentSampleEn = currentQ ? (currentQ.sampleCasual || "") : "";
+        const isWordInCurrentQ = currentSampleEn && currentSampleEn.toLowerCase().includes(cleanEn.toLowerCase());
+
+        let exampleEn = "";
+        let exampleVi = "";
+        let level = "A2";
+        let topicLabel = "Từ vựng thực chiến";
+        let ipaVal = getPhraseIPA(cleanEn);
+
+        if (isWordInCurrentQ) {
+            exampleEn = currentSampleEn;
+            exampleVi = currentQ.vi || "";
+            level = (typeof normalizeCEFRLevel === 'function') ? normalizeCEFRLevel(currentQ.level) : (currentQ.level || "A2");
+            topicLabel = (currentQ.isStructureMode && currentQ.structureInfo)
+                ? currentQ.structureInfo.shortName
+                : (typeof TOPIC_LABELS !== 'undefined' && TOPIC_LABELS[currentQ.topic] ? TOPIC_LABELS[currentQ.topic] : "Giao tiếp");
+        } else if (dictEntry) {
+            // Tự động lấy câu ví dụ, trình độ và IPA từ Từ điển 3K
+            exampleEn = dictEntry.exampleEn || dictEntry.example || dictEntry.ex || "";
+            exampleVi = dictEntry.exampleVi || dictEntry.exVi || dictEntry.ex_vi || "";
+            level = dictEntry.level || "A2";
+            topicLabel = "Từ điển 3K";
+            if (dictEntry.ipa) ipaVal = dictEntry.ipa;
+        }
 
         const newId = 'voc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
         const newVocab = {
             id: newId,
             en: cleanEn,
-            vi: cleanVi || "Từ vựng trọng tâm",
-            ipa: getPhraseIPA(cleanEn),
+            vi: cleanVi || (dictEntry && dictEntry.vi) || "Từ vựng trọng tâm",
+            ipa: ipaVal,
             emoji: suggestVisualEmoji(cleanEn, cleanVi),
             imageUrl: "",
             level: level,
@@ -541,22 +563,6 @@
         if (typeof showToast === 'function') {
             showToast(`✨ Đã lưu "${cleanEn}" vào Kho từ vựng (+2 XP)!`, "success");
         }
-    };
-
-    window.speakHintByIndex = function (idx, btnEl) {
-        const currentQ = (typeof getActiveQuestionObject === 'function') ? getActiveQuestionObject() : null;
-        if (!currentQ || !Array.isArray(currentQ.hints) || !currentQ.hints[idx]) return;
-        const text = currentQ.hints[idx].en || "";
-        if (text && typeof speakText === 'function') {
-            speakText(text, btnEl);
-        }
-    };
-
-    window.saveHintByIndex = function (idx, btnEl) {
-        const currentQ = (typeof getActiveQuestionObject === 'function') ? getActiveQuestionObject() : null;
-        if (!currentQ || !Array.isArray(currentQ.hints) || !currentQ.hints[idx]) return;
-        const h = currentQ.hints[idx];
-        window.saveWordToVocabBank(h.en || "", h.vi || "", btnEl);
     };
 
     function enhanceHintsListWithSaveButtons() {
