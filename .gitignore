@@ -3,3 +3,5 @@ clean_oxford.py
 raw_words.txt
 translate_dict_examples.py
 data/dictionary_core.js.bak
+admin.html
+js/admin_studio.js
