@@ -1050,7 +1050,17 @@ Trả về JSON gồm:
             window.renderGeminiActionSlot(question, ctx?.userText || '', ctx?.result || { isDirectAnswerView: true });
             return;
         }
-
+        // 1. Ưu tiên đọc bản giải thích đã biên soạn sẵn trong file data/ (không cần API Key)
+        if (question.aiExplanation && typeof question.aiExplanation === 'object') {
+            explanationOpenMap[question.id] = true;
+            try {
+                sessionStorage.setItem(getExplainCacheKey(question), JSON.stringify(question.aiExplanation));
+            } catch (e) {}
+            window.renderGeminiActionSlot(question, ctx?.userText || '', ctx?.result || { isDirectAnswerView: true });
+            const expSlot = document.getElementById('gemini-explain-slot');
+            if (expSlot) expSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return;
+        }
         let cached = null;
         try {
             const raw = sessionStorage.getItem(getExplainCacheKey(question));

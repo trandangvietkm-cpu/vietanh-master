@@ -804,6 +804,60 @@ function saveDictationDoneMap() {
         localStorage.setItem(VA_DICTATION_DONE_KEY, JSON.stringify(dictationTabState.doneMap));
     } catch (e) {}
 }
+// Bảng chuẩn hóa hơn 45 dạng viết tắt tiếng Anh thông dụng (chấp nhận cả 2 chiều viết tắt <-> đầy đủ)
+const VA_DICTATION_CONTRACTIONS = {
+    "i'm": ["i", "am"],
+    "you're": ["you", "are"],
+    "we're": ["we", "are"],
+    "they're": ["they", "are"],
+    "he's": ["he", "is"],
+    "she's": ["she", "is"],
+    "it's": ["it", "is"],
+    "that's": ["that", "is"],
+    "there's": ["there", "is"],
+    "here's": ["here", "is"],
+    "what's": ["what", "is"],
+    "who's": ["who", "is"],
+    "where's": ["where", "is"],
+    "when's": ["when", "is"],
+    "how's": ["how", "is"],
+    "let's": ["let", "us"],
+    "isn't": ["is", "not"],
+    "aren't": ["are", "not"],
+    "wasn't": ["was", "not"],
+    "weren't": ["were", "not"],
+    "don't": ["do", "not"],
+    "doesn't": ["does", "not"],
+    "didn't": ["did", "not"],
+    "can't": ["can", "not"],
+    "cannot": ["can", "not"],
+    "couldn't": ["could", "not"],
+    "won't": ["will", "not"],
+    "wouldn't": ["would", "not"],
+    "shouldn't": ["should", "not"],
+    "mustn't": ["must", "not"],
+    "haven't": ["have", "not"],
+    "hasn't": ["has", "not"],
+    "hadn't": ["had", "not"],
+    "i've": ["i", "have"],
+    "you've": ["you", "have"],
+    "we've": ["we", "have"],
+    "they've": ["they", "have"],
+    "i'll": ["i", "will"],
+    "you'll": ["you", "will"],
+    "he'll": ["he", "will"],
+    "she'll": ["she", "will"],
+    "it'll": ["it", "will"],
+    "we'll": ["we", "will"],
+    "they'll": ["they", "will"],
+    "that'll": ["that", "will"],
+    "i'd": ["i", "would"],
+    "you'd": ["you", "would"],
+    "he'd": ["he", "would"],
+    "she'd": ["she", "would"],
+    "we'd": ["we", "would"],
+    "they'd": ["they", "would"]
+};
 
 function normalizeDictationWord(raw) {
     return String(raw || '')
@@ -824,17 +878,45 @@ function tokenizeDictationSentence(sentence) {
     return tokens;
 }
 
-// So khớp chặt từng từ (KHÔNG dùng từ đồng nghĩa, bỏ qua viết hoa & dấu câu, căn chỉnh LCS)
+// Mở rộng từng từ viết tắt sang dạng chuẩn để so khớp, vẫn giữ origIdx để ánh xạ ngược về từ gốc trên giao diện
+function expandDictationTokens(tokens) {
+    const expanded = [];
+    for (let idx = 0; idx < tokens.length; idx++) {
+        const norm = tokens[idx].norm;
+        const nextNorm = tokens[idx + 1] ? tokens[idx + 1].norm : '';
+
+        // Xử lý ngữ cảnh 's + got/been -> has (VD: He's got -> he has got)
+        if ((norm === "he's" || norm === "she's" || norm === "it's") && (nextNorm === 'got' || nextNorm === 'been')) {
+            expanded.push({ norm: norm.slice(0, -2), origIdx: idx });
+            expanded.push({ norm: 'has', origIdx: idx });
+            continue;
+        }
+
+        const mapped = VA_DICTATION_CONTRACTIONS[norm];
+        if (mapped) {
+            mapped.forEach(part => expanded.push({ norm: part, origIdx: idx }));
+        } else {
+            expanded.push({ norm, origIdx: idx });
+        }
+    }
+    return expanded;
+}
+
+// So khớp chặt từng từ (chấp nhận cả viết tắt & đầy đủ, bỏ qua viết hoa & dấu câu, căn chỉnh LCS)
 function evaluateDictationStrict(userText, targetSentence) {
     const targetTokens = tokenizeDictationSentence(targetSentence);
     const userTokens = tokenizeDictationSentence(userText);
-    const m = userTokens.length;
-    const n = targetTokens.length;
+
+    const expTarget = expandDictationTokens(targetTokens);
+    const expUser = expandDictationTokens(userTokens);
+
+    const m = expUser.length;
+    const n = expTarget.length;
 
     const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
     for (let i = 1; i <= m; i++) {
         for (let j = 1; j <= n; j++) {
-            if (userTokens[i - 1].norm === targetTokens[j - 1].norm) {
+            if (expUser[i - 1].norm === expTarget[j - 1].norm) {
                 dp[i][j] = dp[i - 1][j - 1] + 1;
             } else {
                 dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
@@ -842,13 +924,13 @@ function evaluateDictationStrict(userText, targetSentence) {
         }
     }
 
-    const matchedTargetIdx = new Set();
-    const matchedUserIdx = new Set();
+    const matchedExpTargetIdx = new Set();
+    const matchedExpUserIdx = new Set();
     let i = m, j = n;
     while (i > 0 && j > 0) {
-        if (userTokens[i - 1].norm === targetTokens[j - 1].norm) {
-            matchedUserIdx.add(i - 1);
-            matchedTargetIdx.add(j - 1);
+        if (expUser[i - 1].norm === expTarget[j - 1].norm) {
+            matchedExpUserIdx.add(i - 1);
+            matchedExpTargetIdx.add(j - 1);
             i--;
             j--;
         } else if (dp[i - 1][j] >= dp[i][j - 1]) {
@@ -858,9 +940,26 @@ function evaluateDictationStrict(userText, targetSentence) {
         }
     }
 
-    const extraWrongCount = m - matchedUserIdx.size;
-    const missingCount = n - matchedTargetIdx.size;
-    const isPerfect = n > 0 && missingCount === 0 && extraWrongCount === 0;
+    // Ánh xạ ngược về chỉ số từ gốc: 1 từ gốc được tính là khớp khi TẤT CẢ phần mở rộng của nó đều khớp
+    const partsCountByOrig = {};
+    const matchedPartsByOrig = {};
+    expTarget.forEach((item, expIdx) => {
+        partsCountByOrig[item.origIdx] = (partsCountByOrig[item.origIdx] || 0) + 1;
+        if (matchedExpTargetIdx.has(expIdx)) {
+            matchedPartsByOrig[item.origIdx] = (matchedPartsByOrig[item.origIdx] || 0) + 1;
+        }
+    });
+
+    const matchedTargetIdx = new Set();
+    for (let k = 0; k < targetTokens.length; k++) {
+        if (partsCountByOrig[k] && matchedPartsByOrig[k] === partsCountByOrig[k]) {
+            matchedTargetIdx.add(k);
+        }
+    }
+
+    const extraWrongCount = m - matchedExpUserIdx.size;
+    const missingCount = targetTokens.length - matchedTargetIdx.size;
+    const isPerfect = targetTokens.length > 0 && missingCount === 0 && extraWrongCount === 0;
 
     return {
         targetTokens,

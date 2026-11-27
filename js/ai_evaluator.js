@@ -865,58 +865,10 @@
             }
         }
 
-        // Render khối Giải thích chi tiết từ Gemini AI đã lưu sẵn (0 token) nếu bài học có trường aiExplanation
-        function renderPreGeneratedAIExplanation(question) {
-            const detailsBody = document.getElementById('result-details-body');
-            if (!detailsBody) return;
-
-            let box = document.getElementById('pregenerated-ai-explanation-box');
-            const rawExp = question && question.aiExplanation;
-            if (!rawExp) {
-                if (box) box.remove();
-                return;
-            }
-
-            if (!box) {
-                box = document.createElement('div');
-                box.id = 'pregenerated-ai-explanation-box';
-                detailsBody.appendChild(box);
-            }
-
-            const bodyHtml = typeof rawExp === 'string'
-                ? `<p class="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">${escapeHtmlSafe(rawExp)}</p>`
-                : `
-                    ${rawExp.summary ? `<p class="text-xs sm:text-sm text-slate-700 leading-relaxed">${escapeHtmlSafe(rawExp.summary)}</p>` : ''}
-                    ${Array.isArray(rawExp.grammarPoints) && rawExp.grammarPoints.length > 0 ? `
-                        <div class="space-y-1">
-                            <p class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-700">Cấu trúc ngữ pháp trọng tâm:</p>
-                            <ul class="list-disc pl-4 space-y-1 text-xs text-slate-700">
-                                ${rawExp.grammarPoints.map(pt => `<li>${escapeHtmlSafe(pt)}</li>`).join('')}
-                            </ul>
-                        </div>
-                    ` : ''}
-                    ${rawExp.nativeTip ? `
-                        <div class="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900">
-                            <i class="fa-solid fa-lightbulb text-amber-500 mr-1.5"></i>${escapeHtmlSafe(rawExp.nativeTip)}
-                        </div>
-                    ` : ''}
-                `;
-
-            box.className = 'p-4 sm:p-5 rounded-3xl border border-amber-200/90 bg-gradient-to-br from-amber-50/60 via-white to-indigo-50/30 space-y-2.5';
-            box.innerHTML = `
-                <div class="flex items-center justify-between gap-2">
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <span class="text-xs font-extrabold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-                            <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
-                            <span>Giải thích chi tiết từ Gemini AI</span>
-                        </span>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            Đã lưu sẵn • 0 token
-                        </span>
-                    </div>
-                </div>
-                ${bodyHtml}
-            `;
+        
+        function renderPreGeneratedAIExplanation() {
+            const oldBox = document.getElementById('pregenerated-ai-explanation-box');
+             if (oldBox) oldBox.remove();
         }
 
         // Cầu nối ưu tiên kết quả từ Gemini AI (Đồng bộ cả 2 chiều: nâng lên Đạt/Chuẩn xác HOẶC hạ xuống Chưa đạt)
@@ -1194,7 +1146,7 @@
                 `;
             }).join('');
 
-            // Hiển thị giải thích chi tiết từ Gemini AI nếu câu hỏi đã có sẵn aiExplanation
+            
             renderPreGeneratedAIExplanation(question);
 
             const tagLabel = question.isStructureMode 
