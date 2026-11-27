@@ -17,7 +17,7 @@
             <!-- Đầu Sidebar: Logo + Nút thu gọn -->
             <div class="va-ds-header">
                 <div class="va-ds-brand" onclick="switchTab('home')">
-                    <div class="va-ds-logo"><i class="fa-solid fa-language"></i></div>
+                    <div class="va-ds-logo" style="overflow:hidden; padding:0;"><img src="./icons/icon-192.png" alt="ViệtAnh Master" style="width:100%; height:100%; object-fit:cover; display:block;"></div>
                     <div class="va-ds-brand-text">
                         <div class="va-ds-title">ViệtAnh <span>Master</span></div>
                         <div class="va-ds-sub">Luyện dịch tự nhiên</div>
