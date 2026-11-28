@@ -286,3 +286,15 @@ html.va-dark kbd {
   border-color: #475569 !important;
   color: var(--va-text-sub) !important;
 }
+/* Chống bôi đen & menu Copy trên điện thoại/máy tính */
+body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+}

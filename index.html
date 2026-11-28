@@ -310,8 +310,13 @@
             <!-- ==================== TAB 0: TRANG CHỦ (HOME DASHBOARD - BÀN HỌC HÔM NAY) ==================== -->
         <div id="view-home" class="space-y-5">
             <div id="home-workspace-top" class="space-y-5"></div>
-            <div id="home-daily-words-slot"></div>
+            <div id="va-home-warmup-slot" class="mb-5"></div>
             <div id="home-workspace-bottom" class="space-y-5"></div>
+            <div id="home-daily-words-slot"></div>
+        </div>
+        <!-- TAB RIÊNG: 100 NGÀY LÀM CHỦ 1000 TỪ CỐT LÕI -->
+        <div id="view-warmup" class="hidden space-y-5">
+            <div id="va-warmup-page-root" class="space-y-5"></div>
         </div>
 
         <!-- ==================== TAB 1: KHU VỰC LUYỆN TẬP ==================== -->
@@ -1535,11 +1540,14 @@
     <script src="./js/storage_manager.js?v=7"></script>
     <script src="./js/audio_engine.js?v=5"></script>
     <script src="./js/ai_evaluator.js?v=5"></script>
-    <script src="js/station_milestone.js"></script>
+    <script src="./js/station_milestone.js"></script>
     <script src="./js/dashboard_roadmap.js?v=5"></script>
+    
     <script src="./js/app_controller.js?v=5"></script>
     <script src="./js/modals_search.js?v=6"></script>
     <script src="./data/dictionary_core.js?v=6"></script>
+    <script src="./data/phrasal_verbs.js"></script>
+    <script src="./data/warmup_packs.js?v=1"></script>
     <script src="./js/vocab_module.js?v=5"></script>
     <script src="./js/vocab_library.js?v=5"></script>
     <script src="./js/vocab_quiz.js?v=5"></script>
@@ -1553,6 +1561,8 @@
     <script src="./js/srs_vocab_engine.js?v=5"></script>
     <script src="./js/srs_vocab_ui.js?v=5"></script>
     <script src="./js/audio_drill.js?v=6"></script>
+    <script src="./js/warmup_module.js?v=1"></script>
+    <script src="./js/checkpoint_exam.js?v=4"></script>
     <script src="./js/gemini_assistant.js?v=6"></script>
 
     <!-- Kích hoạt Service Worker (PWA) -->
@@ -1565,5 +1575,12 @@
       });
     }
   </script>
+  <script>
+document.addEventListener('contextmenu', function (e) {
+    if (!e.target.closest('input, textarea, [contenteditable="true"]')) {
+        e.preventDefault();
+    }
+});
+</script>
 </body>
 </html>

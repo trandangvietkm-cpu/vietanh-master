@@ -283,6 +283,44 @@ Yêu cầu: senses tối đa 4 nghĩa phổ biến nhất (ưu tiên đủ các 
         return `<div class="space-y-4">${sensesHtml}${collocationsHtml}${synAntHtml}${noteHtml}</div>`;
     }
 
+    function renderRelatedPhrasalVerbsHTML(word) {
+    const key = String(word || '').trim().toLowerCase();
+    const list = (window.VA_PHRASAL_VERBS_BY_BASE && window.VA_PHRASAL_VERBS_BY_BASE[key]) || [];
+    if (list.length === 0) return '';
+
+    const itemsHtml = list.map(pv => {
+        const safeSpeak = String(pv.example || pv.term || '').replace(/'/g, "\\'");
+        return `
+            <div class="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 space-y-1">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="font-extrabold text-sm text-indigo-900">${escHtml(pv.term)}</span>
+                        ${pv.ipa ? `<span class="font-mono text-[11px] text-indigo-600">${escHtml(pv.ipa)}</span>` : ''}
+                        ${pv.level ? `<span class="px-1.5 py-0.5 rounded bg-white text-[10px] font-bold text-indigo-700 border border-indigo-200">${escHtml(pv.level)}</span>` : ''}
+                    </div>
+                    <button type="button" onclick="if(typeof speakText==='function') speakText('${safeSpeak}', this)" class="w-7 h-7 rounded-full bg-white hover:bg-indigo-600 text-indigo-600 hover:text-white border border-indigo-200 flex items-center justify-center shrink-0 transition-all" title="Nghe ví dụ">
+                        <i class="fa-solid fa-volume-high text-[11px]"></i>
+                    </button>
+                </div>
+                <p class="text-xs font-bold text-slate-700">${escHtml(pv.vi)}</p>
+                ${pv.example ? `<p class="text-xs text-slate-800 italic">"${escHtml(pv.example)}"</p>` : ''}
+                ${pv.exampleVi ? `<p class="text-[11px] text-slate-500">${escHtml(pv.exampleVi)}</p>` : ''}
+                ${pv.note ? `<p class="text-[11px] text-amber-800 bg-amber-50/80 border border-amber-200/70 rounded-lg px-2 py-1 mt-1"><i class="fa-solid fa-lightbulb text-amber-500 mr-1"></i>${escHtml(pv.note)}</p>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+            <div class="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-indigo-700">
+                <i class="fa-solid fa-link"></i>
+                <span>Cụm động từ hay dùng với "${escHtml(word)}" (${list.length})</span>
+            </div>
+            <div class="space-y-2">${itemsHtml}</div>
+        </div>
+    `;
+}
+
     function closeWordDetailModal() {
         const existing = document.getElementById('va-word-detail-modal');
         if (existing) existing.remove();
@@ -416,7 +454,7 @@ Yêu cầu: senses tối đa 4 nghĩa phổ biến nhất (ưu tiên đủ các 
                             ${entry.example ? `<p class="text-xs text-slate-600 italic">"${escHtml(entry.example)}"</p>` : ''}
                         </div>
                     ` : ''}
-
+                    ${renderRelatedPhrasalVerbsHTML(rawWord)}
                     <!-- TẦNG 2: PHÂN TÍCH CHUYÊN SÂU AI + CACHE -->
                     <div id="va-wd-ai-section">${aiSectionHtml}</div>
 

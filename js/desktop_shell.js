@@ -45,6 +45,9 @@
                 <button type="button" class="va-ds-item" data-ds-key="dictionary" onclick="vaDesktopNav('dictionary')">
                     <i class="fa-solid fa-book"></i><span>Từ điển 3K</span>
                 </button>
+                <button type="button" class="va-ds-item" data-ds-key="warmup" onclick="vaDesktopNav('warmup')">
+                    <i class="fa-solid fa-fire"></i><span>1000 từ cốt lõi</span>
+                </button>
                 <button type="button" class="va-ds-item" data-ds-key="quiz60" onclick="vaDesktopNav('quiz60')">
                     <i class="fa-solid fa-bolt"></i><span>Phản xạ 60s</span>
                 </button>
@@ -204,6 +207,8 @@
             }
         } else if (key === 'cloze') {
             typeof switchTab === 'function' && switchTab('cloze');
+        } else if (key === 'warmup') {
+            typeof switchTab === 'function' && switchTab('warmup');    
         } else if (key === 'search') {
             typeof openGlobalSearchModal === 'function' && openGlobalSearchModal();
         } else if (key === 'notebook') {

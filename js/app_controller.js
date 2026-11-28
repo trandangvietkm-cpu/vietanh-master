@@ -5,7 +5,7 @@
  */
 
         function switchTab(tab) {
-            const targetTab = ['home', 'practice', 'notebook', 'review', 'dictionary', 'profile', 'cloze'].includes(tab)
+           const targetTab = ['home', 'practice', 'notebook', 'review', 'dictionary', 'profile', 'cloze', 'warmup'].includes(tab)
                 ? tab
                 : 'practice';
             state.activeTab = targetTab;
@@ -46,6 +46,11 @@
             } else if (targetTab === 'profile') {
                 document.getElementById('view-profile')?.classList.remove('hidden');
                 if (typeof window.onEnterProfileTab === 'function') window.onEnterProfileTab();
+            } else if (targetTab === 'warmup') {
+                  document.getElementById('view-warmup')?.classList.remove('hidden');
+                if (window.VA_WARMUP && typeof window.VA_WARMUP.renderWarmupPage === 'function') {
+                 window.VA_WARMUP.renderWarmupPage();
+            }    
             } else if (targetTab === 'cloze') {
                  if (typeof window.onEnterClozeTab === 'function') window.onEnterClozeTab();
                 document.getElementById('view-cloze')?.classList.remove('hidden');

@@ -1671,6 +1671,7 @@
                 const payload = {
                     app: 'VietAnhMaster',
                     exportedAt: new Date().toISOString(),
+                    warmupProgress: safeReadStorageJSON('va_warmup_progress_v1', null),
                     storage: {}
                 };
                 for (let i = 0; i < localStorage.length; i++) {
@@ -1716,6 +1717,10 @@
                                     restoredKeys++;
                                 }
                             });
+                            if (parsed && parsed.warmupProgress && typeof parsed.warmupProgress === 'object' && !dataMap['va_warmup_progress_v1']) {
+                                localStorage.setItem('va_warmup_progress_v1', JSON.stringify(parsed.warmupProgress));
+                                restoredKeys++;
+                            }
                             if (restoredKeys > 0) {
                                 if (typeof showToast === 'function') showToast('Khôi phục thành công! Đang tải lại ứng dụng...', 'success');
                                 setTimeout(() => window.location.reload(), 700);

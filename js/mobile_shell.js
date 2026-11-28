@@ -198,6 +198,10 @@
                         <i class="fa-solid fa-book text-emerald-600"></i>
                         <span>Từ điển 3K</span>
                     </button>
+                    <button type="button" onclick="closeSystemMenuSheet(); if(window.VA_WARMUP && typeof window.VA_WARMUP.openWarmupPage==='function') window.VA_WARMUP.openWarmupPage(); else switchTab('warmup');" class="va-sheet-tile">
+                        <i class="fa-solid fa-fire text-orange-500"></i>
+                        <span>1000 từ cốt lõi</span>
+                    </button>
                     <button type="button" onclick="closeSystemMenuSheet(); switchTab('cloze');" class="va-sheet-tile">
                         <i class="fa-solid fa-puzzle-piece text-indigo-600"></i>
                         <span>Điền từ ngữ cảnh</span>

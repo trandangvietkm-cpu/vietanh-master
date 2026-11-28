@@ -560,6 +560,7 @@
                     notebook: Array.isArray(state.notebook) ? state.notebook : [],
                     reviewBox: safeReadStorageJSON('va_review_box', []),
                     errorLogs: safeReadStorageJSON('va_error_logs', []),
+                    warmupProgress: safeReadStorageJSON('va_warmup_progress_v1', null),
                     activities: {
                         dictationDone: safeReadStorageJSON('va_dictation_done', {}),
                         adSpeak: safeReadStorageJSON('va_ad_speak_v1', {}),
@@ -697,7 +698,10 @@
                     localStorage.setItem('va_error_logs', JSON.stringify(d.errorLogs));
                 }
 
-                // 5. Khôi phục Các chế độ luyện tập phụ (activities)
+                // 5. Khôi phục Tiến độ 1000 từ cốt lõi (warmupProgress) & Các chế độ luyện tập phụ (activities)
+                if (d.warmupProgress && typeof d.warmupProgress === 'object') {
+                    localStorage.setItem('va_warmup_progress_v1', JSON.stringify(d.warmupProgress));
+                }
                 if (activities.dictationDone && typeof activities.dictationDone === 'object') {
                     localStorage.setItem('va_dictation_done', JSON.stringify(activities.dictationDone));
                 }
@@ -716,6 +720,9 @@
                 if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
                 if (typeof renderLearningRoadmap === 'function') renderLearningRoadmap();
                 if (typeof renderStructureLibrary === 'function') renderStructureLibrary();
+                if (window.VA_WARMUP && typeof window.VA_WARMUP.renderAll === 'function') {
+                    window.VA_WARMUP.renderAll();
+                }
 
                 if (typeof showToast === 'function') {
                     showToast(`✅ Đã khôi phục tiến độ thành công (${state.xp} XP • ${completedCount} câu • ${vocabCount} từ)!`, 'success');
